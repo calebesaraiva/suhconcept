@@ -207,9 +207,15 @@ export const settings = {
   pickupDays: '2',
   pixKey: '',
   pixEnabled: 'true',
-  pixDiscount: '10',
+  pixDiscount: '5',
   cardEnabled: 'true',
-  maxInstallments: '6',
+  maxInstallments: '12',
+  interestFreeInstallments: '3',
+  pagbankEnabled: 'true',
+  pagbankEnvironment: 'production',
+  pagbankToken: '',
+  storeDisplayName: 'SUH CONCEPT',
+  publicSiteUrl: 'https://suhconcept.com',
 };
 
 export const demoCouponCodes = ['COPA2026', 'SUH10', 'FRETE', 'VIP30', 'FRETEGRATIS'];

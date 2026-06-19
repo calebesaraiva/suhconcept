@@ -3,12 +3,14 @@ import type { PrismaClient, Product } from '../generated/prisma';
 export interface StorePricingSettings {
   pixDiscount: number;
   maxInstallments: number;
+  interestFreeInstallments: number;
   freeShipThreshold: number;
 }
 
 export const DEFAULT_STORE_PRICING_SETTINGS: StorePricingSettings = {
-  pixDiscount: 10,
-  maxInstallments: 6,
+  pixDiscount: 5,
+  maxInstallments: 12,
+  interestFreeInstallments: 3,
   freeShipThreshold: 599.99,
 };
 
@@ -28,6 +30,13 @@ export async function getStorePricingSettings(prisma: PrismaClient): Promise<Sto
   return {
     pixDiscount: Math.min(Math.max(parseNumber(settings.pixDiscount, DEFAULT_STORE_PRICING_SETTINGS.pixDiscount), 0), 100),
     maxInstallments: Math.max(1, Math.trunc(parseNumber(settings.maxInstallments, DEFAULT_STORE_PRICING_SETTINGS.maxInstallments))),
+    interestFreeInstallments: Math.max(
+      1,
+      Math.min(
+        Math.trunc(parseNumber(settings.interestFreeInstallments, DEFAULT_STORE_PRICING_SETTINGS.interestFreeInstallments)),
+        Math.max(1, Math.trunc(parseNumber(settings.maxInstallments, DEFAULT_STORE_PRICING_SETTINGS.maxInstallments))),
+      ),
+    ),
     freeShipThreshold: Math.max(0, parseNumber(settings.freeShipThreshold, DEFAULT_STORE_PRICING_SETTINGS.freeShipThreshold)),
   };
 }

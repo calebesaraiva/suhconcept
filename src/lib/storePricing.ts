@@ -5,12 +5,14 @@ import type { ApiProduct } from './api';
 export interface StorePricingSettings {
   pixDiscount: number;
   maxInstallments: number;
+  interestFreeInstallments: number;
   freeShipThreshold: number;
 }
 
 const DEFAULT_SETTINGS: StorePricingSettings = {
-  pixDiscount: 10,
-  maxInstallments: 6,
+  pixDiscount: 5,
+  maxInstallments: 12,
+  interestFreeInstallments: 3,
   freeShipThreshold: 599.99,
 };
 
@@ -24,11 +26,15 @@ function roundMoney(value: number) {
 export function resolveStorePricingSettings(raw?: Record<string, string> | null): StorePricingSettings {
   const pixDiscount = Number(raw?.pixDiscount);
   const maxInstallments = Number(raw?.maxInstallments);
+  const interestFreeInstallments = Number(raw?.interestFreeInstallments);
   const freeShipThreshold = Number(raw?.freeShipThreshold);
 
   return {
     pixDiscount: Number.isFinite(pixDiscount) ? Math.min(Math.max(pixDiscount, 0), 100) : DEFAULT_SETTINGS.pixDiscount,
     maxInstallments: Number.isFinite(maxInstallments) ? Math.max(1, Math.trunc(maxInstallments)) : DEFAULT_SETTINGS.maxInstallments,
+    interestFreeInstallments: Number.isFinite(interestFreeInstallments)
+      ? Math.max(1, Math.min(Math.trunc(interestFreeInstallments), Number.isFinite(maxInstallments) ? Math.max(1, Math.trunc(maxInstallments)) : DEFAULT_SETTINGS.maxInstallments))
+      : DEFAULT_SETTINGS.interestFreeInstallments,
     freeShipThreshold: Number.isFinite(freeShipThreshold) ? Math.max(0, freeShipThreshold) : DEFAULT_SETTINGS.freeShipThreshold,
   };
 }

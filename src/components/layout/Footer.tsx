@@ -51,7 +51,7 @@ export default function Footer() {
   const highlights = [
     { title: 'Entrega para todo o Brasil', subtitle: 'Atendimento com suporte no WhatsApp' },
     { title: 'Frete grátis promocional', subtitle: `Acima de R$ ${settings.freeShipThreshold.toFixed(2).replace('.', ',')} em pedidos elegíveis` },
-    { title: 'Compra segura', subtitle: `Pix com desconto e parcelamento em até ${settings.maxInstallments}x` },
+    { title: 'Compra segura', subtitle: `Pix com desconto e cartão em até ${settings.maxInstallments}x` },
   ];
 
   return (
@@ -67,7 +67,7 @@ export default function Footer() {
             <p style={{ fontSize: 16, fontWeight: 800, color: '#fff', marginBottom: 4 }}>
               Frete grátis acima de <span style={{ color: '#FFB800' }}>R$ {settings.freeShipThreshold.toFixed(2).replace('.', ',')}</span>
             </p>
-            <p style={{ fontSize: 12, color: '#666' }}>{settings.pixDiscount}% OFF no PIX · Parcele em até {settings.maxInstallments}x</p>
+            <p style={{ fontSize: 12, color: '#666' }}>{settings.pixDiscount}% OFF no PIX · 3x sem juros e até {settings.maxInstallments}x no cartão</p>
           </div>
           <Link to="/categoria/todos" className="no-underline" style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '10px 20px', borderRadius: 8, background: 'linear-gradient(135deg,#a855f7,#FF2DA0)', color: '#fff', fontWeight: 800, fontSize: 13, whiteSpace: 'nowrap' }}>
             EXPLORAR →

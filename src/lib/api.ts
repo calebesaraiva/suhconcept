@@ -44,6 +44,7 @@ export interface CreateOrderPayload {
   customerPhone?: string; customerCpf?: string;
   items: { productId: string; productName: string; quantity: number; price: number; pixPrice: number; size: string; color: string }[];
   paymentMethod: string; deliveryMethod: string;
+  installments?: number;
   address?: Record<string, string>;
   couponCode?: string; discount?: number;
 }
@@ -61,6 +62,15 @@ export interface OrderShippingInfo {
   method: string;
   freeShippingApplied: boolean;
   message: string;
+}
+
+export interface OrderPaymentInfo {
+  provider: 'pagbank' | 'manual';
+  method?: 'PIX' | 'CREDIT_CARD';
+  checkoutId?: string;
+  checkoutUrl?: string;
+  reason?: string;
+  status?: string;
 }
 
 export interface ApiUser {
@@ -121,11 +131,13 @@ export const api = {
 
   orders: {
     create: (data: CreateOrderPayload) =>
-      request<{ order: ApiOrder; cashback: number; shipping: OrderShippingInfo }>('/orders', {
+      request<{ order: ApiOrder; cashback: number; shipping: OrderShippingInfo; payment: OrderPaymentInfo | null }>('/orders', {
         method: 'POST',
         body: JSON.stringify(data),
       }),
     get: (id: string) => request<ApiOrder>(`/orders/${id}`),
+    paymentStatus: (id: string) =>
+      request<{ order: ApiOrder; payment: Record<string, unknown> | null }>(`/payments/pagbank/orders/${id}/status`),
   },
 
   auth: {

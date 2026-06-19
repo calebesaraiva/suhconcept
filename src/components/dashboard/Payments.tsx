@@ -54,16 +54,19 @@ export default function Payments() {
   const cardEnabled = settings?.cardEnabled !== 'false';
   const pixDiscount = Number(settings?.pixDiscount || 0);
   const maxInstallments = Number(settings?.maxInstallments || 1);
+  const interestFreeInstallments = Number(settings?.interestFreeInstallments || 1);
   const pixKey = settings?.pixKey || '';
+  const pagbankEnabled = settings?.pagbankEnabled !== 'false';
+  const pagbankEnvironment = settings?.pagbankEnvironment === 'sandbox' ? 'Sandbox' : 'Produção';
   const paymentMethods = finance?.paymentMethods ?? [];
   const totals = finance?.totals ?? { receita: 0, pedidos: 0, ticketMedio: 0, clientes: 0 };
 
   const enabledMethods = useMemo(() => {
     const methods = [];
     if (pixEnabled) methods.push({ label: 'PIX', icon: QrCode, color: '#22c55e', desc: `${pixDiscount}% de desconto configurado` });
-    if (cardEnabled) methods.push({ label: 'Cartão', icon: CreditCard, color: '#FF2DA0', desc: `Até ${maxInstallments}x sem juros` });
+    if (cardEnabled) methods.push({ label: 'Cartão', icon: CreditCard, color: '#FF2DA0', desc: `${interestFreeInstallments}x sem juros e até ${maxInstallments}x no checkout` });
     return methods;
-  }, [pixEnabled, pixDiscount, cardEnabled, maxInstallments]);
+  }, [pixEnabled, pixDiscount, cardEnabled, maxInstallments, interestFreeInstallments]);
 
   const loading = settingsLoading || financeLoading;
 
@@ -136,7 +139,11 @@ export default function Payments() {
             </div>
             <div style={{ padding: '16px', borderRadius: 12, background: '#0d0d0d', border: '1px solid rgba(255,255,255,0.06)' }}>
               <p style={{ fontSize: 10, fontWeight: 700, color: '#666', letterSpacing: '0.1em', textTransform: 'uppercase', marginBottom: 6 }}>Parcelamento sem juros</p>
-              <p style={{ fontSize: 14, fontWeight: 800, color: '#fff' }}>Até {maxInstallments}x</p>
+              <p style={{ fontSize: 14, fontWeight: 800, color: '#fff' }}>{interestFreeInstallments}x sem juros · até {maxInstallments}x</p>
+            </div>
+            <div style={{ padding: '16px', borderRadius: 12, background: '#0d0d0d', border: '1px solid rgba(255,255,255,0.06)' }}>
+              <p style={{ fontSize: 10, fontWeight: 700, color: '#666', letterSpacing: '0.1em', textTransform: 'uppercase', marginBottom: 6 }}>Gateway</p>
+              <p style={{ fontSize: 14, fontWeight: 800, color: pagbankEnabled ? '#fff' : '#999' }}>{pagbankEnabled ? `PagBank ativo · ${pagbankEnvironment}` : 'Desligado'}</p>
             </div>
           </div>
         </motion.div>

@@ -55,6 +55,7 @@ export default function CheckoutPage() {
   const storeAddress = settings.storeAddress || 'SUH CONCEPT - Imperatriz, MA';
   const storeHours = settings.storeHours || 'Seg-Sab: 9h-19h · Dom: 10h-14h';
   const maxInstallments = pricingSettings.maxInstallments;
+  const interestFreeInstallments = pricingSettings.interestFreeInstallments;
   const pixEnabled = settings.pixEnabled !== 'false';
   const cardEnabled = settings.cardEnabled !== 'false';
   const resolvedPayMethod: PayMethod =
@@ -130,12 +131,6 @@ export default function CheckoutPage() {
         }
       }
     }
-    if (step === 1 && resolvedPayMethod === 'cartao') {
-      if (!form.card_num.trim() || !form.card_name.trim() || !form.card_exp.trim() || !form.card_cvv.trim()) {
-        showToast('Preencha os dados do cartão.', 'error');
-        return false;
-      }
-    }
     return true;
   };
 
@@ -164,13 +159,14 @@ export default function CheckoutPage() {
         };
       });
 
-      const { order, shipping } = await api.orders.create({
+      const { order, shipping, payment } = await api.orders.create({
         customerName: form.nome,
         customerEmail: form.email,
         customerPhone: form.tel,
         customerCpf: form.cpf,
         items,
         paymentMethod: resolvedPayMethod === 'cartao' ? `Cartão ${form.parcelas}x` : 'PIX',
+        installments: resolvedPayMethod === 'cartao' ? Number(form.parcelas) : 1,
         deliveryMethod,
         address: deliveryMethod === 'delivery' ? {
           cep: form.cep,
@@ -185,8 +181,14 @@ export default function CheckoutPage() {
         discount: couponDiscount,
       });
 
+      if (payment?.provider === 'pagbank' && payment.checkoutUrl) {
+        clearCart();
+        window.location.href = payment.checkoutUrl;
+        return;
+      }
+
       setOrderId(order.id);
-      setShippingMessage(shipping.message);
+      setShippingMessage(payment?.reason || shipping.message);
       clearCart();
       setDone(true);
     } catch (e) {
@@ -405,32 +407,19 @@ export default function CheckoutPage() {
             {resolvedPayMethod === 'cartao' && cardEnabled && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                 <div>
-                  <label style={lbl}>Número do cartão</label>
-                  <input style={inp} value={form.card_num} onChange={set('card_num')} placeholder="0000 0000 0000 0000" maxLength={19} onFocus={focusIn} onBlur={focusOut} />
-                </div>
-                <div>
-                  <label style={lbl}>Nome no cartão</label>
-                  <input style={inp} value={form.card_name} onChange={set('card_name')} placeholder="JOÃO SILVA" onFocus={focusIn} onBlur={focusOut} />
-                </div>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-                  <div>
-                    <label style={lbl}>Validade</label>
-                    <input style={inp} value={form.card_exp} onChange={set('card_exp')} placeholder="MM/AA" maxLength={5} onFocus={focusIn} onBlur={focusOut} />
-                  </div>
-                  <div>
-                    <label style={lbl}>CVV</label>
-                    <input style={inp} value={form.card_cvv} onChange={set('card_cvv')} placeholder="123" maxLength={4} onFocus={focusIn} onBlur={focusOut} />
-                  </div>
-                </div>
-                <div>
                   <label style={lbl}>Parcelamento</label>
                   <select style={{ ...inp, cursor: 'pointer', appearance: 'none' as const }} value={form.parcelas} onChange={set('parcelas')} onFocus={focusIn} onBlur={focusOut}>
                     {Array.from({ length: maxInstallments }, (_, idx) => idx + 1).map((n) => (
                       <option key={n} value={n} style={{ background: '#111' }}>
-                        {n}x de R$ {(subtotal / n).toFixed(2).replace('.', ',')} {n === 1 ? '(à vista)' : 'sem juros'}
+                        {n}x {n === 1 ? '(à vista)' : n <= interestFreeInstallments ? '(sem juros)' : '(juros no checkout)'}
                       </option>
                     ))}
                   </select>
+                </div>
+                <div style={{ padding: '14px 16px', borderRadius: 12, background: 'rgba(168,85,247,0.07)', border: '1px solid rgba(168,85,247,0.18)' }}>
+                  <p style={{ fontSize: 12, color: '#d7b8ff', lineHeight: 1.7 }}>
+                    Os dados do cartão serão preenchidos com segurança no checkout oficial do PagBank. Na sua loja o cliente escolhe apenas a quantidade de parcelas.
+                  </p>
                 </div>
               </div>
             )}
@@ -447,7 +436,7 @@ export default function CheckoutPage() {
                   </div>
                   <p style={{ fontSize: 12, color: '#22C55E', fontWeight: 600 }}>Economia de R$ {pixDiscount.toFixed(2).replace('.', ',')}</p>
                 </div>
-                <p style={{ fontSize: 11, color: '#999', textAlign: 'center' }}>QR Code gerado após confirmação · Aprovação em até 5 min</p>
+                <p style={{ fontSize: 11, color: '#999', textAlign: 'center' }}>O QR Code real será exibido no checkout seguro do PagBank.</p>
               </div>
             )}
 
@@ -500,7 +489,7 @@ export default function CheckoutPage() {
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12 }}>
                   <span style={{ color: '#555' }}>Pagamento</span>
-                  <span style={{ color: '#ccc' }}>{resolvedPayMethod === 'cartao' ? `Cartão ${form.parcelas}x` : 'PIX'}</span>
+                  <span style={{ color: '#ccc' }}>{resolvedPayMethod === 'cartao' ? `Cartão ${form.parcelas}x${Number(form.parcelas) > interestFreeInstallments ? ' com juros' : ''}` : 'PIX'}</span>
                 </div>
                 {deliveryMethod === 'delivery' && (
                   <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, gap: 12 }}>
@@ -512,7 +501,7 @@ export default function CheckoutPage() {
                 )}
                 {!freeShippingApplied && deliveryMethod === 'delivery' && (
                   <p style={{ fontSize: 11, color: '#666', lineHeight: 1.5 }}>
-                    O frete não entra nesse total. A loja informa o valor manualmente antes do pagamento.
+                    O frete não entra nesse total. A loja informa o valor manualmente antes do pagamento e o checkout online só será liberado depois dessa confirmação.
                   </p>
                 )}
                 <div style={{ height: 1, background: 'rgba(255,255,255,0.05)' }} />
@@ -587,7 +576,7 @@ export default function CheckoutPage() {
         </div>
         {deliveryMethod === 'delivery' && !freeShippingApplied && (
           <p style={{ fontSize: 11, color: '#666', lineHeight: 1.5 }}>
-            O frete nao entra nesse total. A loja informa o valor manualmente antes do pagamento.
+            O frete nao entra nesse total. A loja informa o valor manualmente antes do pagamento e o checkout online só é liberado depois disso.
           </p>
         )}
         <div style={{ height: 1, background: 'rgba(255,255,255,0.06)' }} />
@@ -626,7 +615,7 @@ export default function CheckoutPage() {
               </button>
             )}
             <button onClick={next} style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, padding: '14px', borderRadius: 10, border: 'none', background: 'linear-gradient(135deg,#a855f7,#FF2DA0)', color: '#fff', fontWeight: 900, fontSize: 13, letterSpacing: '0.06em', cursor: 'pointer', fontFamily: 'inherit' }}>
-              {submitting ? <><Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} /> PROCESSANDO...</> : step === 2 ? <><Lock size={14} /> CONFIRMAR PEDIDO</> : <>CONTINUAR <ChevronRight size={14} /></>}
+              {submitting ? <><Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} /> PROCESSANDO...</> : step === 2 ? <><Lock size={14} /> {resolvedPayMethod === 'cartao' || resolvedPayMethod === 'pix' ? 'IR PARA PAGAMENTO' : 'CONFIRMAR PEDIDO'}</> : <>CONTINUAR <ChevronRight size={14} /></>}
             </button>
           </div>
         </div>

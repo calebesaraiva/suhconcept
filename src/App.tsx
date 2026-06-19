@@ -10,6 +10,7 @@ import CategoriesPage from './pages/CategoriesPage';
 import FavoritesPage from './pages/FavoritesPage';
 import AccountPage from './pages/AccountPage';
 import InfoPage from './pages/InfoPage';
+import PaymentReturnPage from './pages/PaymentReturnPage';
 
 export default function App() {
   return (
@@ -21,6 +22,7 @@ export default function App() {
         <Route path="/categorias" element={<CategoriesPage />} />
         <Route path="/produto/:slug" element={<ProductPage />} />
         <Route path="/checkout" element={<CheckoutPage />} />
+        <Route path="/pagamento/retorno" element={<PaymentReturnPage />} />
         <Route path="/sobre" element={<SobrePage />} />
         <Route path="/contato" element={<InfoPage pageKey="contact" />} />
         <Route path="/ajuda" element={<InfoPage pageKey="help" />} />

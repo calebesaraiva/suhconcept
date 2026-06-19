@@ -8,6 +8,8 @@ import couponsRouter from './routes/coupons';
 import dashboardRouter from './routes/dashboard';
 import authRouter from './routes/auth';
 import { ensureStoreBootstrap } from './lib/bootstrapStore';
+import paymentsRouter from './routes/payments';
+import { getStoreSettingsMap, toPublicStoreSettings } from './lib/storeSettings';
 
 const app = express();
 
@@ -26,16 +28,18 @@ void ensureStoreBootstrap(prisma).catch((error) => {
 });
 
 app.use(cors({ origin: parseAllowedOrigins(process.env.FRONTEND_URL), credentials: true }));
-app.use(express.json());
+app.use(express.json({
+  verify: (req, _res, buffer) => {
+    (req as express.Request & { rawBody?: string }).rawBody = buffer.toString('utf8');
+  },
+}));
 
 app.get('/health', (_req, res) => res.json({ ok: true, ts: new Date().toISOString() }));
 
 app.get('/api/settings', async (_req, res) => {
   try {
-    const rows = await prisma.setting.findMany();
-    const map: Record<string, string> = {};
-    for (const r of rows) map[r.key] = r.value;
-    res.json(map);
+    const settings = await getStoreSettingsMap(prisma);
+    res.json(toPublicStoreSettings(settings));
   } catch {
     res.status(500).json({ error: 'Erro interno' });
   }
@@ -62,6 +66,7 @@ app.use('/api/auth', authRouter);
 app.use('/api/products', productsRouter);
 app.use('/api/orders', ordersRouter);
 app.use('/api/coupons', couponsRouter);
+app.use('/api/payments', paymentsRouter);
 app.use('/api/dashboard', dashboardRouter);
 
 export default app;

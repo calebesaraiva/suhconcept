@@ -80,9 +80,14 @@ export default function Settings() {
   // Payments
   const [pixKey, setPixKey] = useState('');
   const [pixEnabled, setPixEnabled] = useState(true);
-  const [pixDiscount, setPixDiscount] = useState(10);
+  const [pixDiscount, setPixDiscount] = useState(5);
   const [cardEnabled, setCardEnabled] = useState(true);
-  const [maxInstallments, setMaxInstallments] = useState(6);
+  const [maxInstallments, setMaxInstallments] = useState(12);
+  const [interestFreeInstallments, setInterestFreeInstallments] = useState(3);
+  const [pagbankEnabled, setPagbankEnabled] = useState(true);
+  const [pagbankEnvironment, setPagbankEnvironment] = useState<'production' | 'sandbox'>('production');
+  const [pagbankToken, setPagbankToken] = useState('');
+  const [storeDisplayName, setStoreDisplayName] = useState('SUH CONCEPT');
 
   useEffect(() => {
     api.dashboard.getSettings().then(s => {
@@ -102,6 +107,11 @@ export default function Settings() {
       if (s.pixDiscount)                     setPixDiscount(Number(s.pixDiscount));
       if (s.cardEnabled !== undefined)       setCardEnabled(s.cardEnabled === 'true');
       if (s.maxInstallments)                 setMaxInstallments(Number(s.maxInstallments));
+      if (s.interestFreeInstallments)        setInterestFreeInstallments(Number(s.interestFreeInstallments));
+      if (s.pagbankEnabled !== undefined)    setPagbankEnabled(s.pagbankEnabled === 'true');
+      if (s.pagbankEnvironment === 'sandbox' || s.pagbankEnvironment === 'production') setPagbankEnvironment(s.pagbankEnvironment);
+      if (s.pagbankToken)                    setPagbankToken(s.pagbankToken);
+      if (s.storeDisplayName)                setStoreDisplayName(s.storeDisplayName);
     }).catch(() => {}).finally(() => setLoading(false));
   }, []);
 
@@ -125,6 +135,11 @@ export default function Settings() {
         pixDiscount: String(pixDiscount),
         cardEnabled: String(cardEnabled),
         maxInstallments: String(maxInstallments),
+        interestFreeInstallments: String(interestFreeInstallments),
+        pagbankEnabled: String(pagbankEnabled),
+        pagbankEnvironment,
+        pagbankToken,
+        storeDisplayName,
       });
       setSaved(true);
       setTimeout(() => setSaved(false), 2500);
@@ -302,13 +317,60 @@ export default function Settings() {
               <Toggle on={cardEnabled} color="#FF2DA0" onChange={setCardEnabled} />
             </div>
             {cardEnabled && (
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+                <div>
+                  <label style={lbl}>Máximo de parcelas</label>
+                  <select style={{ ...inp, cursor: 'pointer' }} value={maxInstallments} onChange={e => setMaxInstallments(Number(e.target.value))} onFocus={focIn} onBlur={focOut}>
+                    {[1,2,3,4,5,6,8,10,12].map(n => (
+                      <option key={n} value={n} style={{ background: '#111' }}>{n}x</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label style={lbl}>Parcelas sem juros</label>
+                  <select style={{ ...inp, cursor: 'pointer' }} value={interestFreeInstallments} onChange={e => setInterestFreeInstallments(Number(e.target.value))} onFocus={focIn} onBlur={focOut}>
+                    {Array.from({ length: maxInstallments }, (_, idx) => idx + 1).map(n => (
+                      <option key={n} value={n} style={{ background: '#111' }}>{n}x sem juros</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div style={{ padding: '16px', borderRadius: 12, background: '#0d0d0d', border: '1px solid rgba(255,255,255,0.05)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: pagbankEnabled ? 14 : 0 }}>
               <div>
-                <label style={lbl}>Máximo de parcelas (sem juros)</label>
-                <select style={{ ...inp, cursor: 'pointer' }} value={maxInstallments} onChange={e => setMaxInstallments(Number(e.target.value))} onFocus={focIn} onBlur={focOut}>
-                  {[1,2,3,4,5,6,8,10,12].map(n => (
-                    <option key={n} value={n} style={{ background: '#111' }}>{n}x {n === 1 ? '(à vista)' : 'sem juros'}</option>
-                  ))}
-                </select>
+                <p style={{ fontWeight: 700, color: '#ccc', fontSize: 13 }}>PagBank / PagSeguro</p>
+                <p style={{ fontSize: 11, color: '#777', marginTop: 2 }}>Checkout oficial com PIX, cartão e webhook automático</p>
+              </div>
+              <Toggle on={pagbankEnabled} color="#2563eb" onChange={setPagbankEnabled} />
+            </div>
+            {pagbankEnabled && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+                  <div>
+                    <label style={lbl}>Ambiente</label>
+                    <select style={{ ...inp, cursor: 'pointer' }} value={pagbankEnvironment} onChange={e => setPagbankEnvironment(e.target.value as 'production' | 'sandbox')} onFocus={focIn} onBlur={focOut}>
+                      <option value="production" style={{ background: '#111' }}>Produção</option>
+                      <option value="sandbox" style={{ background: '#111' }}>Sandbox</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label style={lbl}>Nome na cobrança</label>
+                    <input style={inp} value={storeDisplayName} onChange={e => setStoreDisplayName(e.target.value)} maxLength={17} placeholder="SUH CONCEPT" onFocus={focIn} onBlur={focOut} />
+                  </div>
+                </div>
+                <div>
+                  <label style={lbl}>Token PagBank</label>
+                  <input type="password" style={inp} value={pagbankToken} onChange={e => setPagbankToken(e.target.value)} placeholder="Bearer token da conta" onFocus={focIn} onBlur={focOut} />
+                </div>
+                <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, padding: '10px 12px', borderRadius: 8, background: 'rgba(37,99,235,0.06)', border: '1px solid rgba(37,99,235,0.15)' }}>
+                  <Info size={13} style={{ color: '#60a5fa', flexShrink: 0, marginTop: 1 }} />
+                  <p style={{ fontSize: 11.5, color: '#60a5fa', lineHeight: 1.6 }}>
+                    URL do webhook para cadastrar no PagBank: <strong>https://suhconcept.com/api/payments/pagbank/webhook</strong>. Em pedidos com frete manual, o pagamento online só fica disponível quando o total já estiver fechado.
+                  </p>
+                </div>
               </div>
             )}
           </div>
