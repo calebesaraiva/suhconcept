@@ -1,8 +1,11 @@
 import { Router } from 'express';
 import { requireAuth, requireAdmin } from '../middleware/auth';
 import { prisma } from '../lib/prisma';
+import { getStoreSettingsMap } from '../lib/storeSettings';
+import { sendOrderOutForDeliveryEmail } from '../lib/mailer';
 
 const router = Router();
+const PROTECTED_SETTINGS = new Set(['storeCode', 'storeName', 'paymentGateway']);
 const isPerfumariaCategory = (value: unknown) =>
   String(value || '')
     .toLowerCase()
@@ -121,10 +124,46 @@ router.get('/orders', async (req, res) => {
 router.patch('/orders/:id/status', async (req, res) => {
   try {
     const { status } = req.body;
-    const validStatuses = ['pendente', 'aguardando_pagamento', 'pago', 'enviado', 'entregue', 'cancelado'];
+    const validStatuses = ['em_preparo', 'saiu_para_entrega', 'cancelado'];
     if (!validStatuses.includes(status)) return res.status(400).json({ error: 'Status inválido' });
-    const order = await prisma.order.update({ where: { id: req.params.id }, data: { status } });
-    res.json(order);
+    const existingOrder = await prisma.order.findUnique({
+      where: { id: req.params.id },
+      include: { items: true },
+    });
+    if (!existingOrder) return res.status(404).json({ error: 'Pedido não encontrado' });
+
+    const order = await prisma.order.update({ where: { id: req.params.id }, data: { status }, include: { items: true } });
+
+    let notification: { sent: boolean; reason?: string } | null = null;
+    if (status === 'saiu_para_entrega') {
+      try {
+        const settings = await getStoreSettingsMap(prisma);
+        const address =
+          existingOrder.address && typeof existingOrder.address === 'object'
+            ? (existingOrder.address as Record<string, unknown>)
+            : null;
+
+        notification = await sendOrderOutForDeliveryEmail(prisma, {
+          orderId: order.id,
+          customerName: order.customerName,
+          customerEmail: order.customerEmail,
+          total: order.total,
+          items: order.items.map((item) => ({
+            productName: item.productName,
+            quantity: item.quantity,
+            size: item.size,
+            color: item.color,
+          })),
+          address,
+          storeName: settings.smtpFromName || settings.storeName || 'Loja',
+        });
+      } catch (error) {
+        console.error('Erro ao enviar e-mail de pedido em rota:', error);
+        notification = { sent: false, reason: 'Falha ao enviar notificação por e-mail' };
+      }
+    }
+
+    res.json({ ...order, notification });
   } catch {
     res.status(500).json({ error: 'Erro interno' });
   }
@@ -403,7 +442,7 @@ router.get('/settings', async (_req, res) => {
 // PUT /api/dashboard/settings
 router.put('/settings', async (req, res) => {
   try {
-    const entries = Object.entries(req.body as Record<string, string>);
+    const entries = Object.entries(req.body as Record<string, string>).filter(([key]) => !PROTECTED_SETTINGS.has(key));
     await Promise.all(entries.map(([key, value]) =>
       prisma.setting.upsert({ where: { key }, update: { value: String(value) }, create: { key, value: String(value) } })
     ));

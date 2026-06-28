@@ -15,6 +15,8 @@ const statusStyle: Record<string, { label: string; color: string; bg: string }> 
   pendente:              { label: 'Pendente',    color: '#f59e0b', bg: 'rgba(245,158,11,0.12)'  },
   aguardando_pagamento:  { label: 'Aguard. Pag', color: '#f59e0b', bg: 'rgba(245,158,11,0.12)'  },
   pago:                  { label: 'Pago',        color: '#22c55e', bg: 'rgba(34,197,94,0.12)'   },
+  em_preparo:            { label: 'Em preparo',  color: '#a855f7', bg: 'rgba(168,85,247,0.12)'  },
+  saiu_para_entrega:     { label: 'Saiu p/ entrega', color: '#3b82f6', bg: 'rgba(59,130,246,0.12)' },
   enviado:               { label: 'Enviado',     color: '#d946ef', bg: 'rgba(217,70,239,0.12)'  },
   entregue:              { label: 'Entregue',    color: '#3b82f6', bg: 'rgba(59,130,246,0.12)'  },
   cancelado:             { label: 'Cancelado',   color: '#ef4444', bg: 'rgba(239,68,68,0.12)'   },

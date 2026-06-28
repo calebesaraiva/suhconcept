@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Search, Eye, Package, Truck, CheckCircle2, XCircle, Clock, RefreshCw, X } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
@@ -11,12 +11,15 @@ const statusConfig: Record<string, { label: string; icon: LucideIcon; color: str
   pendente:             { label: 'Pendente',    icon: Clock,        color: '#f59e0b' },
   aguardando_pagamento: { label: 'Aguard. Pag', icon: Clock,        color: '#f59e0b' },
   pago:                 { label: 'Pago',        icon: CheckCircle2, color: '#22c55e' },
+  em_preparo:           { label: 'Em preparo',  icon: Package,      color: '#a855f7' },
+  saiu_para_entrega:    { label: 'Saiu p/ entrega', icon: Truck,    color: '#3b82f6' },
   enviado:              { label: 'Enviado',     icon: Truck,        color: '#a855f7' },
   entregue:             { label: 'Entregue',    icon: Package,      color: '#3b82f6' },
   cancelado:            { label: 'Cancelado',   icon: XCircle,      color: '#ef4444' },
 };
 
-const STATUS_FLOW = ['pendente', 'pago', 'enviado', 'entregue'];
+const FILTER_STATUSES = ['todos', 'aguardando_pagamento', 'pago', 'em_preparo', 'saiu_para_entrega', 'cancelado'];
+const MANUAL_STATUS_FLOW = ['em_preparo', 'saiu_para_entrega'];
 
 const card: React.CSSProperties = {
   background: '#111117',
@@ -55,13 +58,29 @@ export default function Orders() {
   );
   const orders = data?.orders ?? [];
 
+  useEffect(() => {
+    const interval = window.setInterval(() => {
+      void refetch();
+    }, 15000);
+
+    return () => window.clearInterval(interval);
+  }, [refetch]);
+
   const handleUpdateStatus = async (orderId: string, newStatus: string) => {
     setUpdatingStatus(true);
     try {
-      await api.dashboard.updateOrderStatus(orderId, newStatus);
+      const updatedOrder = await api.dashboard.updateOrderStatus(orderId, newStatus);
       refetch();
       if (selected?.id === orderId) setSelected(prev => prev ? { ...prev, status: newStatus } : null);
-      showToast('Status do pedido atualizado!');
+
+      const notification = (updatedOrder as ApiOrder & { notification?: { sent: boolean; reason?: string } | null }).notification;
+      if (newStatus === 'saiu_para_entrega' && notification?.sent) {
+        showToast('Pedido atualizado e cliente notificado por e-mail!');
+      } else if (newStatus === 'saiu_para_entrega' && notification && !notification.sent) {
+        showToast(notification.reason || 'Pedido atualizado, mas o e-mail não foi enviado.', 'error');
+      } else {
+        showToast('Status do pedido atualizado!');
+      }
     } catch (e) {
       showToast(e instanceof Error ? e.message : 'Erro ao atualizar status', 'error');
     } finally {
@@ -69,7 +88,7 @@ export default function Orders() {
     }
   };
 
-  const statusCounts = STATUS_FLOW.reduce((acc, s) => {
+  const statusCounts = ['aguardando_pagamento', 'pago', 'em_preparo', 'saiu_para_entrega'].reduce((acc, s) => {
     acc[s] = orders.filter(o => o.status === s).length;
     return acc;
   }, {} as Record<string, number>);
@@ -96,9 +115,10 @@ export default function Orders() {
       <div className="dash-stats-5" style={{ gap: 12 }}>
         {[
           { label: 'Total',    value: data?.total ?? 0,    color: '#a855f7', icon: Eye          },
-          { label: 'Pendente', value: statusCounts.pendente ?? 0, color: '#f59e0b', icon: Clock },
+          { label: 'Aguardando', value: statusCounts.aguardando_pagamento ?? 0, color: '#f59e0b', icon: Clock },
           { label: 'Pago',     value: statusCounts.pago ?? 0,     color: '#22c55e', icon: CheckCircle2 },
-          { label: 'Enviado',  value: statusCounts.enviado ?? 0,  color: '#a855f7', icon: Truck },
+          { label: 'Preparo',  value: statusCounts.em_preparo ?? 0,  color: '#a855f7', icon: Package },
+          { label: 'Entrega',  value: statusCounts.saiu_para_entrega ?? 0,  color: '#3b82f6', icon: Truck },
           { label: 'Receita',  value: `R$ ${totalRevenue.toLocaleString('pt-BR', { minimumFractionDigits: 0 })}`, color: '#FF2DA0', icon: Package },
         ].map(({ label, value, color, icon: Icon }, i) => (
           <motion.div key={label} initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.07 }}
@@ -123,7 +143,7 @@ export default function Orders() {
             onBlur={e => (e.target.style.borderColor = 'rgba(255,255,255,0.07)')} />
         </div>
         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-          {['todos', 'pendente', 'pago', 'enviado', 'entregue', 'cancelado'].map(s => {
+          {FILTER_STATUSES.map(s => {
             const active = filterStatus === s;
             const col = s !== 'todos' ? (statusConfig[s]?.color ?? '#a855f7') : '#a855f7';
             return (
@@ -297,7 +317,7 @@ export default function Orders() {
               <div style={{ marginBottom: 20 }}>
                 <p style={{ fontSize: 10, fontWeight: 700, color: '#666', letterSpacing: '0.12em', textTransform: 'uppercase', marginBottom: 10 }}>Atualizar Status</p>
                 <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                  {STATUS_FLOW.map(s => {
+                  {MANUAL_STATUS_FLOW.map(s => {
                     const active = selected.status === s;
                     const col = statusConfig[s]?.color ?? '#a855f7';
                     return (

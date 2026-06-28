@@ -5,6 +5,7 @@ export const PUBLIC_SETTINGS_BLOCKLIST = new Set([
   'mercadopagoAccessToken',
   'mercadopagoWebhookSecret',
   'correiosToken',
+  'smtpPass',
 ]);
 
 const PUBLIC_SETTINGS_PREFIX_BLOCKLIST = [
