@@ -2,7 +2,14 @@ import type { PrismaClient, Setting } from '../generated/prisma';
 
 export const PUBLIC_SETTINGS_BLOCKLIST = new Set([
   'pagbankToken',
+  'mercadopagoAccessToken',
+  'mercadopagoWebhookSecret',
+  'correiosToken',
 ]);
+
+const PUBLIC_SETTINGS_PREFIX_BLOCKLIST = [
+  'mercadopago',
+];
 
 export type StoreSettingsMap = Record<string, string>;
 
@@ -17,7 +24,10 @@ export function mapSettingsRows(rows: Pick<Setting, 'key' | 'value'>[]): StoreSe
 
 export function toPublicStoreSettings(settings: StoreSettingsMap): StoreSettingsMap {
   return Object.fromEntries(
-    Object.entries(settings).filter(([key]) => !PUBLIC_SETTINGS_BLOCKLIST.has(key)),
+    Object.entries(settings).filter(([key]) =>
+      !PUBLIC_SETTINGS_BLOCKLIST.has(key) &&
+      !PUBLIC_SETTINGS_PREFIX_BLOCKLIST.some((prefix) => key.startsWith(prefix)),
+    ),
   );
 }
 
