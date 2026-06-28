@@ -43,6 +43,20 @@ function cleanPhone(value?: string) {
   return String(value || '').replace(/\D/g, '');
 }
 
+function getBrazilPhoneParts(value?: string) {
+  let digits = cleanPhone(value);
+  if (digits.startsWith('55') && digits.length >= 12) {
+    digits = digits.slice(2);
+  }
+  if (digits.length < 10) {
+    return null;
+  }
+  const area = digits.slice(0, 2);
+  const number = digits.slice(2);
+  if (!area || !number) return null;
+  return { country: '55', area, number };
+}
+
 function cleanTaxId(value?: string) {
   return String(value || '').replace(/\D/g, '');
 }
@@ -198,7 +212,7 @@ export async function createPagBankCheckout(
     shippingType?: 'FREE' | 'FIXED';
   },
 ) {
-  const phone = cleanPhone(payload.customerPhone);
+  const phone = getBrazilPhoneParts(payload.customerPhone);
   const taxId = cleanTaxId(payload.customerCpf);
   const data: JsonObject = {
     reference_id: payload.orderId,
@@ -208,7 +222,7 @@ export async function createPagBankCheckout(
       name: payload.customerName,
       email: payload.customerEmail,
       tax_id: taxId || undefined,
-      phones: phone ? [{ country: '55', area: phone.slice(0, 2), number: phone.slice(2) }] : undefined,
+      phone: phone || undefined,
     },
     items: payload.items.map((item) => ({
       reference_id: item.referenceId,

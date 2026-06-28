@@ -9,6 +9,7 @@ const router = Router();
 const REQUIRED_DELIVERY_FIELDS = ['cep', 'rua', 'num', 'bairro', 'cidade', 'estado'] as const;
 const normalizeEmail = (value: unknown) => String(value ?? '').trim().toLowerCase();
 const normalizeCpf = (value: unknown) => String(value ?? '').replace(/\D/g, '').trim();
+const normalizePhone = (value: unknown) => String(value ?? '').replace(/\D/g, '').trim();
 
 // POST /api/orders — create order from checkout
 router.post('/', async (req, res) => {
@@ -33,6 +34,7 @@ router.post('/', async (req, res) => {
 
     const normalizedCustomerEmail = normalizeEmail(customerEmail);
     const normalizedCustomerCpf = normalizeCpf(customerCpf) || undefined;
+    const normalizedCustomerPhone = normalizePhone(customerPhone) || undefined;
 
     const selectedDeliveryMethod = deliveryMethod === 'pickup' ? 'pickup' : 'delivery';
     const normalizedAddress = address && typeof address === 'object' ? address : null;
@@ -54,6 +56,14 @@ router.post('/', async (req, res) => {
       : 'Valor do frete informado manualmente pelo WhatsApp após o pedido';
     const requestedInstallments = Math.max(1, Math.trunc(Number(installments) || 1));
     const isCardPayment = paymentMethodText.toLowerCase().includes('cart');
+
+    if ((isPixPayment || isCardPayment) && !normalizedCustomerCpf) {
+      return res.status(400).json({ error: 'Informe um CPF válido para pagamentos online' });
+    }
+
+    if ((isPixPayment || isCardPayment) && (!normalizedCustomerPhone || normalizedCustomerPhone.length < 10)) {
+      return res.status(400).json({ error: 'Informe um telefone válido com DDD para pagamentos online' });
+    }
 
     if (selectedDeliveryMethod === 'delivery' && !deliveryEnabled) {
       return res.status(400).json({ error: 'Entrega a domicílio indisponível no momento' });
@@ -156,7 +166,7 @@ router.post('/', async (req, res) => {
         data: {
           name: customerName,
           email: normalizedCustomerEmail,
-          phone: customerPhone,
+          phone: normalizedCustomerPhone,
           cpf: normalizedCustomerCpf,
           city: normalizedAddress?.cidade,
           state: normalizedAddress?.estado,
@@ -167,7 +177,7 @@ router.post('/', async (req, res) => {
         where: { id: customer.id },
         data: {
           name: customerName,
-          phone: customerPhone,
+          phone: normalizedCustomerPhone,
           city: normalizedAddress?.cidade ?? customer.city,
           state: normalizedAddress?.estado ?? customer.state,
           ...(customer.email === normalizedCustomerEmail ? { email: normalizedCustomerEmail } : {}),
@@ -183,7 +193,7 @@ router.post('/', async (req, res) => {
           customerId: customer.id,
           customerName,
           customerEmail: normalizedCustomerEmail,
-          customerPhone,
+          customerPhone: normalizedCustomerPhone,
           customerCpf: normalizedCustomerCpf,
           subtotal,
           total,
@@ -299,7 +309,7 @@ router.post('/', async (req, res) => {
           orderId: order.id,
           customerName,
           customerEmail: normalizedCustomerEmail,
-          customerPhone,
+          customerPhone: normalizedCustomerPhone,
           customerCpf: normalizedCustomerCpf,
           discountAmount,
           paymentMethod: isPixPayment ? 'PIX' : 'CREDIT_CARD',
