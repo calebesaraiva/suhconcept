@@ -85,13 +85,6 @@ function findFirstString(values: unknown[]) {
 function extractCheckoutUrl(raw: unknown) {
   if (!raw || typeof raw !== 'object') return '';
   const data = raw as JsonObject;
-  const direct = findFirstString([
-    data.redirect_url,
-    data.payment_url,
-    data.checkout_url,
-  ]);
-  if (direct) return direct;
-
   for (const link of getLinks(raw)) {
     const href = getString(link.href);
     const rel = getString(link.rel).toUpperCase();
@@ -99,6 +92,12 @@ function extractCheckoutUrl(raw: unknown) {
     if (!href) continue;
     if (rel.includes('PAY') || rel.includes('REDIRECT') || type === 'REDIRECT') return href;
   }
+
+  const direct = findFirstString([
+    data.payment_url,
+    data.checkout_url,
+  ]);
+  if (direct) return direct;
 
   for (const link of getLinks(raw)) {
     const href = getString(link.href);
