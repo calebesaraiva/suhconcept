@@ -224,7 +224,7 @@ router.post('/', async (req, res) => {
               provider: pagBankConfig ? 'pagbank' : 'manual',
               method: isPixPayment ? 'PIX' : isCardPayment ? 'CREDIT_CARD' : paymentMethodText,
               installments: requestedInstallments,
-              checkoutEligible: pagBankConfig ? (selectedDeliveryMethod === 'pickup' || freeShippingApplied) : false,
+              checkoutEligible: pagBankConfig ? true : false,
             },
           },
           couponCode: appliedCouponCode,
@@ -267,7 +267,7 @@ router.post('/', async (req, res) => {
       shouldCreateCheckout = Boolean(
         pagBankConfig &&
         (isPixPayment || isCardPayment) &&
-        (selectedDeliveryMethod === 'pickup' || freeShippingApplied),
+        (selectedDeliveryMethod === 'pickup' || selectedDeliveryMethod === 'delivery'),
       );
 
       return createdOrder;
@@ -339,7 +339,7 @@ router.post('/', async (req, res) => {
             };
           }),
           shippingType: selectedDeliveryMethod === 'delivery'
-            ? (freeShippingApplied ? 'FREE' : undefined)
+            ? (freeShippingApplied ? 'FREE' : 'FIXED')
             : undefined,
           shippingAmount,
           shippingAddress: selectedDeliveryMethod === 'delivery' ? normalizedAddress || undefined : undefined,
