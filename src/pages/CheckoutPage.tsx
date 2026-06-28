@@ -62,9 +62,14 @@ export default function CheckoutPage() {
     !cardEnabled && pixEnabled ? 'pix' :
     !pixEnabled && cardEnabled ? 'cartao' :
     payMethod;
-  const subtotal = cart.reduce((a, i) => a + i.product.price * i.quantity, 0);
-  const pixTotal = cart.reduce((a, i) => a + getProductPricing(i.product, pricingSettings).pixPrice * i.quantity, 0);
-  const pixDiscount = subtotal - pixTotal;
+  const cardSubtotal = cart.reduce((a, i) => a + getProductPricing(i.product, pricingSettings, i.quantity, 'card').baseTotalPrice, 0);
+  const pixSubtotal = cart.reduce((a, i) => a + getProductPricing(i.product, pricingSettings, i.quantity, 'pix').baseTotalPrice, 0);
+  const cardComboDiscount = cart.reduce((a, i) => a + getProductPricing(i.product, pricingSettings, i.quantity, 'card').comboSavings, 0);
+  const pixComboDiscount = cart.reduce((a, i) => a + getProductPricing(i.product, pricingSettings, i.quantity, 'pix').comboSavings, 0);
+  const subtotal = +(cardSubtotal - cardComboDiscount).toFixed(2);
+  const pixTotal = +(pixSubtotal - pixComboDiscount).toFixed(2);
+  const pixDiscount = +(cardSubtotal - pixSubtotal).toFixed(2);
+  const comboDiscount = resolvedPayMethod === 'pix' ? pixComboDiscount : cardComboDiscount;
   const total = resolvedPayMethod === 'pix' ? pixTotal - couponDiscount : subtotal - couponDiscount;
   const cashback = Math.max(0, total) * 0.05;
 
@@ -477,7 +482,12 @@ export default function CheckoutPage() {
                   <p style={{ fontSize: 11, color: '#444', marginBottom: 4 }}>
                     {item.color ? `${item.color} · ` : ''}{item.size} · Qtd: {item.quantity}
                   </p>
-                  <p style={{ fontWeight: 900, color: '#fff', fontSize: 14 }}>R$ {((resolvedPayMethod === 'pix' ? getProductPricing(item.product, pricingSettings).pixPrice : item.product.price) * item.quantity).toFixed(2).replace('.', ',')}</p>
+                  <p style={{ fontWeight: 900, color: '#fff', fontSize: 14 }}>
+                    R$ {getProductPricing(item.product, pricingSettings, item.quantity, resolvedPayMethod === 'pix' ? 'pix' : 'card').totalPrice.toFixed(2).replace('.', ',')}
+                  </p>
+                  {getProductPricing(item.product, pricingSettings, item.quantity, resolvedPayMethod === 'pix' ? 'pix' : 'card').comboApplied && (
+                    <p style={{ fontSize: 10.5, color: '#FFB800', marginTop: 3 }}>Combo aplicado nesta peça</p>
+                  )}
                 </div>
               </div>
             ))}
@@ -528,7 +538,7 @@ export default function CheckoutPage() {
               <p style={{ fontSize: 10.5, color: '#444', marginTop: 2 }}>{item.size} · ×{item.quantity}</p>
             </div>
             <p style={{ fontSize: 12, fontWeight: 800, color: '#fff', flexShrink: 0 }}>
-              R$ {((resolvedPayMethod === 'pix' ? getProductPricing(item.product, pricingSettings).pixPrice : item.product.price) * item.quantity).toFixed(2).replace('.', ',')}
+              R$ {getProductPricing(item.product, pricingSettings, item.quantity, resolvedPayMethod === 'pix' ? 'pix' : 'card').totalPrice.toFixed(2).replace('.', ',')}
             </p>
           </div>
         ))}
@@ -556,12 +566,18 @@ export default function CheckoutPage() {
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: '#555' }}>
-          <span>Subtotal</span><span>R$ {(resolvedPayMethod === 'pix' ? pixTotal : subtotal).toFixed(2).replace('.', ',')}</span>
+          <span>Subtotal</span><span>R$ {(resolvedPayMethod === 'pix' ? pixSubtotal : cardSubtotal).toFixed(2).replace('.', ',')}</span>
         </div>
         {resolvedPayMethod === 'pix' && (
           <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: '#22C55E' }}>
             <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}><Zap size={10} />PIX</span>
             <span>−R$ {pixDiscount.toFixed(2).replace('.', ',')}</span>
+          </div>
+        )}
+        {comboDiscount > 0 && (
+          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: '#FFB800' }}>
+            <span>Combo promocional</span>
+            <span>−R$ {comboDiscount.toFixed(2).replace('.', ',')}</span>
           </div>
         )}
         {couponApplied && (

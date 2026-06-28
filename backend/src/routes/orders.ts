@@ -93,11 +93,19 @@ router.post('/', async (req, res) => {
       }
     }
 
-    const subtotal = items.reduce((acc: number, item: { productId: string; quantity: number }) => {
+    const baseSubtotal = items.reduce((acc: number, item: { productId: string; quantity: number }) => {
       const prod = products.find((p) => p.id === item.productId)!;
-      const unitPrice = isPixPayment ? getProductPricing(prod, pricingSettings).pixPrice : prod.price;
-      return acc + unitPrice * item.quantity;
+      const pricing = getProductPricing(prod, pricingSettings, item.quantity, isPixPayment ? 'pix' : 'card');
+      return acc + pricing.baseTotalPrice;
     }, 0);
+
+    const productOfferDiscount = items.reduce((acc: number, item: { productId: string; quantity: number }) => {
+      const prod = products.find((p) => p.id === item.productId)!;
+      const pricing = getProductPricing(prod, pricingSettings, item.quantity, isPixPayment ? 'pix' : 'card');
+      return acc + pricing.comboSavings;
+    }, 0);
+
+    const subtotal = +(baseSubtotal - productOfferDiscount).toFixed(2);
 
     let appliedCouponCode: string | null = null;
     let discountAmount = 0;
@@ -133,6 +141,7 @@ router.post('/', async (req, res) => {
     }
 
     discountAmount = +Math.max(0, Math.min(subtotal, discountAmount)).toFixed(2);
+    const totalDiscount = +(productOfferDiscount + discountAmount).toFixed(2);
 
     const freeShippingApplied =
       selectedDeliveryMethod === 'delivery' &&
@@ -195,9 +204,9 @@ router.post('/', async (req, res) => {
           customerEmail: normalizedCustomerEmail,
           customerPhone: normalizedCustomerPhone,
           customerCpf: normalizedCustomerCpf,
-          subtotal,
+          subtotal: baseSubtotal,
           total,
-          discount: discountAmount,
+          discount: totalDiscount,
           cashback,
           paymentMethod: paymentMethodLabel,
           deliveryMethod: selectedDeliveryMethod,
@@ -213,7 +222,7 @@ router.post('/', async (req, res) => {
             },
           },
           couponCode: appliedCouponCode,
-          notes: shippingMessage,
+          notes: productOfferDiscount > 0 ? `${shippingMessage} | Combo promocional aplicado.` : shippingMessage,
           status: isPixPayment || isCardPayment ? 'aguardando_pagamento' : 'pendente',
           items: {
             create: items.map((item: { productId: string; productName: string; quantity: number; size: string; color: string }) => {

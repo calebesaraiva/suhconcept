@@ -71,6 +71,7 @@ export default function ProductPage() {
   const gallery = product.images?.length ? product.images : [product.image];
   const savings = product.originalPrice ? product.originalPrice - product.price : 0;
   const pricing = getProductPricing(product, pricingSettings);
+  const comboPreview = getProductPricing(product, pricingSettings, Math.max(2, qty), 'card');
   const trustItems = [
     { icon: Shield, label: 'Compra segura', note: 'Pagamento protegido' },
     { icon: RefreshCw, label: 'Troca fácil', note: 'Em até 7 dias' },
@@ -312,6 +313,18 @@ export default function ProductPage() {
                     <p style={{ fontSize: 11.5, color: '#b891ef' }}>sem juros no cartão</p>
                   </div>
                 </div>
+
+                {pricing.comboApplied || pricing.comboPrice ? (
+                  <div style={{ padding: '13px 14px', borderRadius: 16, background: 'rgba(255,184,0,0.10)', border: '1px solid rgba(255,184,0,0.22)', marginBottom: 12 }}>
+                    <p style={{ fontSize: 10.5, fontWeight: 900, color: '#ffe39d', letterSpacing: '0.08em', marginBottom: 4 }}>COMBO ESPECIAL</p>
+                    <p style={{ fontSize: 18, fontWeight: 900, color: '#fff', marginBottom: 2 }}>
+                      2 por {brl(pricing.comboPrice ?? comboPreview.comboPrice ?? 0)}
+                    </p>
+                    <p style={{ fontSize: 11.5, color: '#ffd880' }}>
+                      Ao levar duas unidades, o carrinho aplica o valor automaticamente.
+                    </p>
+                  </div>
+                ) : null}
 
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
                   {[

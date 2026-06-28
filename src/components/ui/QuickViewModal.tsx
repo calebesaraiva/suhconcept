@@ -158,6 +158,11 @@ export default function QuickViewModal({ product, onClose }: Props) {
               <p style={{ fontSize: 11.5, color: '#444', marginTop: 3 }}>
                 ou {pricing.installmentCount}x de R$ {pricing.installmentValue.toFixed(2).replace('.', ',')} sem juros
               </p>
+              {pricing.comboPrice ? (
+                <p style={{ fontSize: 11.5, color: '#FFB800', marginTop: 6, fontWeight: 700 }}>
+                  Combo: 2 unidades por R$ {pricing.comboPrice.toFixed(2).replace('.', ',')}
+                </p>
+              ) : null}
             </div>
 
             {/* Cashback badge */}

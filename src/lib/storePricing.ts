@@ -9,6 +9,15 @@ export interface StorePricingSettings {
   freeShipThreshold: number;
 }
 
+type ProductLike = Pick<ApiProduct, 'price' | 'pixPrice' | 'installments'> & {
+  tags?: string[];
+};
+
+interface ComboOffer {
+  quantity: number;
+  totalPrice: number;
+}
+
 const DEFAULT_SETTINGS: StorePricingSettings = {
   pixDiscount: 5,
   maxInstallments: 12,
@@ -23,6 +32,37 @@ const SETTINGS_TTL_MS = 30_000;
 
 function roundMoney(value: number) {
   return Math.round(value * 100) / 100;
+}
+
+function readTagValue(tags: string[] | undefined, prefix: string) {
+  const tag = tags?.find((item) => item.startsWith(prefix));
+  return tag ? tag.slice(prefix.length) : '';
+}
+
+function parseMoneyTag(tags: string[] | undefined, prefix: string) {
+  const raw = readTagValue(tags, prefix).replace(',', '.');
+  const value = Number(raw);
+  return Number.isFinite(value) && value > 0 ? roundMoney(value) : null;
+}
+
+function parseIntTag(tags: string[] | undefined, prefix: string) {
+  const value = Number(readTagValue(tags, prefix));
+  return Number.isFinite(value) && value > 0 ? Math.trunc(value) : null;
+}
+
+function getComboOffer(tags: string[] | undefined): ComboOffer | null {
+  const raw = readTagValue(tags, 'offer-combo:');
+  if (!raw) return null;
+
+  const [quantityRaw, totalRaw] = raw.split(':');
+  const quantity = Number(quantityRaw);
+  const totalPrice = Number((totalRaw || '').replace(',', '.'));
+
+  if (!Number.isFinite(quantity) || quantity < 2 || !Number.isFinite(totalPrice) || totalPrice <= 0) {
+    return null;
+  }
+
+  return { quantity: Math.trunc(quantity), totalPrice: roundMoney(totalPrice) };
 }
 
 export function resolveStorePricingSettings(raw?: Record<string, string> | null): StorePricingSettings {
@@ -94,9 +134,26 @@ export function useStorePricingSettings() {
   return settings;
 }
 
-export function getProductPricing(product: Pick<ApiProduct, 'price' | 'pixPrice' | 'installments'>, settings: StorePricingSettings) {
-  const installmentCount = Math.max(1, settings.maxInstallments || product.installments?.count || 1);
-  const pixPrice = roundMoney(product.price * (1 - settings.pixDiscount / 100));
+export function getProductPricing(
+  product: ProductLike,
+  settings: StorePricingSettings,
+  quantity = 1,
+  paymentMode: 'card' | 'pix' = 'card',
+) {
+  const tags = product.tags ?? [];
+  const pixOverride = parseMoneyTag(tags, 'offer-pix:');
+  const installmentOverride = parseIntTag(tags, 'offer-installments:');
+  const comboOffer = getComboOffer(tags);
+  const installmentCount = installmentOverride ?? Math.max(1, product.installments?.count || settings.maxInstallments || 1);
+  const pixPrice = pixOverride ?? roundMoney(product.price * (1 - settings.pixDiscount / 100));
+  const baseUnitPrice = paymentMode === 'pix' ? pixPrice : product.price;
+  const baseTotalPrice = roundMoney(baseUnitPrice * quantity);
+  const comboCount = comboOffer ? Math.floor(quantity / comboOffer.quantity) : 0;
+  const remainder = comboOffer ? quantity % comboOffer.quantity : quantity;
+  const comboTotalPrice = comboOffer
+    ? roundMoney(comboCount * comboOffer.totalPrice + remainder * baseUnitPrice)
+    : baseTotalPrice;
+  const comboSavings = roundMoney(baseTotalPrice - comboTotalPrice);
 
   return {
     pixDiscountPercent: settings.pixDiscount,
@@ -105,5 +162,12 @@ export function getProductPricing(product: Pick<ApiProduct, 'price' | 'pixPrice'
     installmentValue: roundMoney(product.price / installmentCount),
     pixSavings: roundMoney(product.price - pixPrice),
     freeShipThreshold: settings.freeShipThreshold,
+    baseUnitPrice,
+    baseTotalPrice,
+    totalPrice: comboTotalPrice,
+    comboSavings,
+    comboApplied: comboSavings > 0,
+    comboQuantity: comboOffer?.quantity ?? null,
+    comboPrice: comboOffer?.totalPrice ?? null,
   };
 }

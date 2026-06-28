@@ -11,12 +11,16 @@ interface Props { open: boolean; onClose: () => void; }
 export default function CartDrawer({ open, onClose }: Props) {
   const { cart, removeFromCart, updateQuantity } = useStore();
   const settings = useStorePricingSettings();
-  const subtotal  = cart.reduce((a, i) => a + i.product.price    * i.quantity, 0);
-  const pixTotal  = cart.reduce((a, i) => a + getProductPricing(i.product, settings).pixPrice * i.quantity, 0);
+  const subtotalBase  = cart.reduce((a, i) => a + getProductPricing(i.product, settings, i.quantity, 'card').baseTotalPrice, 0);
+  const subtotalCombo = cart.reduce((a, i) => a + getProductPricing(i.product, settings, i.quantity, 'card').comboSavings, 0);
+  const subtotal  = +(subtotalBase - subtotalCombo).toFixed(2);
+  const pixBase   = cart.reduce((a, i) => a + getProductPricing(i.product, settings, i.quantity, 'pix').baseTotalPrice, 0);
+  const pixCombo  = cart.reduce((a, i) => a + getProductPricing(i.product, settings, i.quantity, 'pix').comboSavings, 0);
+  const pixTotal  = +(pixBase - pixCombo).toFixed(2);
   const count     = cart.reduce((a, i) => a + i.quantity, 0);
   const freeShip  = subtotal >= settings.freeShipThreshold;
   const progress  = Math.min((subtotal / settings.freeShipThreshold) * 100, 100);
-  const pixSaving = subtotal - pixTotal;
+  const pixSaving = subtotalBase - pixBase;
   const cashback  = subtotal * CASHBACK_RATE;
 
   return (
@@ -152,13 +156,17 @@ export default function CartDrawer({ open, onClose }: Props) {
                         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                           <div style={{ textAlign: 'right' }}>
                             <p style={{ fontSize: 15, fontWeight: 900, color: '#fff' }}>
-                              R$ {(item.product.price * item.quantity).toFixed(2).replace('.', ',')}
+                              R$ {getProductPricing(item.product, settings, item.quantity, 'card').totalPrice.toFixed(2).replace('.', ',')}
                             </p>
-                            {item.quantity > 1 && (
+                            {getProductPricing(item.product, settings, item.quantity, 'card').comboApplied ? (
+                              <p style={{ fontSize: 10.5, color: '#FFB800' }}>
+                                Combo aplicado
+                              </p>
+                            ) : item.quantity > 1 ? (
                               <p style={{ fontSize: 10.5, color: '#444' }}>
                                 R$ {item.product.price.toFixed(2).replace('.', ',')} / un
                               </p>
-                            )}
+                            ) : null}
                           </div>
                           <button onClick={() => removeFromCart(item.product.id, item.size, item.color)}
                             style={{ width: 28, height: 28, borderRadius: 6, border: '1px solid rgba(255,255,255,0.07)', background: 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: '#555', transition: 'all 0.2s' }}
@@ -200,8 +208,14 @@ export default function CartDrawer({ open, onClose }: Props) {
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: '14px 16px', borderRadius: 10, background: '#111', border: '1px solid rgba(255,255,255,0.06)' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: '#666' }}>
                     <span>Subtotal ({count} {count === 1 ? 'item' : 'itens'})</span>
-                    <span style={{ color: '#aaa' }}>R$ {subtotal.toFixed(2).replace('.', ',')}</span>
+                    <span style={{ color: '#aaa' }}>R$ {subtotalBase.toFixed(2).replace('.', ',')}</span>
                   </div>
+                  {subtotalCombo > 0 && (
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: '#FFB800' }}>
+                      <span>Combo promocional</span>
+                      <span>– R$ {subtotalCombo.toFixed(2).replace('.', ',')}</span>
+                    </div>
+                  )}
                   {pixSaving > 0 && (
                     <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: '#22C55E' }}>
                       <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}>

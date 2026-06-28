@@ -127,6 +127,11 @@ export default function ProductCard({ product }: Props) {
             <p style={{ fontSize: 10.5, color: '#666', marginTop: 2 }}>
               {pricing.installmentCount}x R$ {pricing.installmentValue.toFixed(2).replace('.', ',')}
             </p>
+            {pricing.comboPrice ? (
+              <p style={{ fontSize: 10.5, color: '#FFB800', marginTop: 4, fontWeight: 700 }}>
+                2 por R$ {pricing.comboPrice.toFixed(2).replace('.', ',')}
+              </p>
+            ) : null}
           </div>
 
           {/* Cashback */}
