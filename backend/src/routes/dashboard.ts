@@ -419,7 +419,7 @@ router.get('/alerts', async (_req, res) => {
         where: { status: { in: ['pendente', 'aguardando_pagamento'] } },
         orderBy: { createdAt: 'desc' },
         take: 10,
-        select: { id: true, customerName: true, total: true, createdAt: true, status: true, paymentMethod: true },
+        include: { items: true },
       }),
       prisma.product.findMany({
         where: { active: true, stock: { lte: 5, gt: 0 } },
@@ -435,6 +435,23 @@ router.get('/alerts', async (_req, res) => {
         type: 'order' as const,
         title: 'Novo pedido — aguardando separação',
         desc: `${o.customerName} · R$ ${o.total.toFixed(2).replace('.', ',')} · ${o.paymentMethod}`,
+        orderId: o.id,
+        customerName: o.customerName,
+        customerEmail: o.customerEmail,
+        customerPhone: o.customerPhone,
+        total: o.total,
+        paymentMethod: o.paymentMethod,
+        itemsCount: o.items.length,
+        itemsSummary: o.items.map(item => `${item.productName} x${item.quantity}`).join(', '),
+        addressSummary: o.deliveryMethod === 'delivery' && o.address && typeof o.address === 'object'
+          ? [
+              (o.address as Record<string, unknown>).rua,
+              (o.address as Record<string, unknown>).num,
+              (o.address as Record<string, unknown>).bairro,
+              (o.address as Record<string, unknown>).cidade,
+              (o.address as Record<string, unknown>).estado,
+            ].filter(Boolean).join(' · ')
+          : 'Retirada na loja',
         time: o.createdAt,
         color: '#a855f7',
         urgent: true,

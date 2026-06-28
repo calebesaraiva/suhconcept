@@ -135,7 +135,7 @@ function LoginGate({ onLogin }: { onLogin: () => void }) {
 }
 
 export default function DashboardShell() {
-  const { dashboardSection } = useStore();
+  const { dashboardSection, setDashboardSection } = useStore();
   const [collapsed, setCollapsed] = useState(false);
   const [mobileSidebar, setMobileSidebar] = useState(false);
   const [search, setSearch] = useState('');
@@ -342,7 +342,13 @@ export default function DashboardShell() {
                           </div>
                         ) : alerts.map((n, i) => (
                           <motion.div key={n.id} initial={{ opacity: 0, x: -8 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: i * 0.04 }}
-                            style={{ display: 'flex', gap: 12, padding: '13px 18px', borderBottom: i < alerts.length - 1 ? '1px solid rgba(255,255,255,0.04)' : 'none', background: n.urgent ? `${n.color}08` : 'transparent' }}>
+                            onClick={() => {
+                              if (n.type === 'order') {
+                                setDashboardSection('orders');
+                              }
+                              setNotifOpen(false);
+                            }}
+                            style={{ display: 'flex', gap: 12, padding: '13px 18px', borderBottom: i < alerts.length - 1 ? '1px solid rgba(255,255,255,0.04)' : 'none', background: n.urgent ? `${n.color}08` : 'transparent', cursor: n.type === 'order' ? 'pointer' : 'default' }}>
                             <div style={{ width: 36, height: 36, borderRadius: 11, background: `${n.color}15`, border: `1px solid ${n.color}25`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                               {n.type === 'order' ? <ShoppingBag size={14} style={{ color: n.color }} /> : <AlertTriangle size={14} style={{ color: n.color }} />}
                             </div>
@@ -352,6 +358,13 @@ export default function DashboardShell() {
                                 {n.urgent && <div style={{ width: 6, height: 6, borderRadius: '50%', background: n.color, flexShrink: 0, boxShadow: `0 0 5px ${n.color}` }} />}
                               </div>
                               <p style={{ fontSize: 11, color: '#777' }}>{n.desc}</p>
+                              {n.type === 'order' && (
+                                <>
+                                  {n.customerPhone && <p style={{ fontSize: 10.5, color: '#9ca3af', marginTop: 4 }}>Telefone: {n.customerPhone}</p>}
+                                  {n.itemsSummary && <p style={{ fontSize: 10.5, color: '#9ca3af', marginTop: 4 }}>Itens: {n.itemsSummary}</p>}
+                                  {n.addressSummary && <p style={{ fontSize: 10.5, color: '#9ca3af', marginTop: 4 }}>Entrega: {n.addressSummary}</p>}
+                                </>
+                              )}
                               {n.time && <p style={{ fontSize: 10, color: '#555', marginTop: 3 }}>{timeAgo(n.time)}</p>}
                             </div>
                           </motion.div>

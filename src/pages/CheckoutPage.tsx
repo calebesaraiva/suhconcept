@@ -13,6 +13,7 @@ import { getProductPricing, resolveStorePricingSettings } from '../lib/storePric
 const STEPS = ['Dados', 'Pagamento', 'Revisão'];
 type PayMethod = 'cartao' | 'pix';
 type DeliveryMethod = 'delivery' | 'pickup';
+const IMPERATRIZ_DELIVERY_FEE = 10;
 
 const inp: React.CSSProperties = {
   width: '100%', background: '#0d0d0d',
@@ -51,7 +52,6 @@ export default function CheckoutPage() {
   const freeShipPromo = settings.freeShipPromo === 'true';
   const pricingSettings = resolveStorePricingSettings(settings);
   const freeShipThreshold = pricingSettings.freeShipThreshold;
-  const whatsapp = settings.whatsapp?.trim();
   const storeAddress = settings.storeAddress || 'SUH CONCEPT - Imperatriz, MA';
   const storeHours = settings.storeHours || 'Seg-Sab: 9h-19h · Dom: 10h-14h';
   const maxInstallments = pricingSettings.maxInstallments;
@@ -70,12 +70,13 @@ export default function CheckoutPage() {
   const pixTotal = +(pixSubtotal - pixComboDiscount).toFixed(2);
   const pixDiscount = +(cardSubtotal - pixSubtotal).toFixed(2);
   const comboDiscount = resolvedPayMethod === 'pix' ? pixComboDiscount : cardComboDiscount;
-  const total = resolvedPayMethod === 'pix' ? pixTotal - couponDiscount : subtotal - couponDiscount;
-  const cashback = Math.max(0, total) * 0.05;
-
   const freeShippingApplied =
     deliveryMethod === 'delivery' &&
     (freeShipPromo || subtotal >= freeShipThreshold || couponFreeShipping);
+  const baseTotal = resolvedPayMethod === 'pix' ? pixTotal - couponDiscount : subtotal - couponDiscount;
+  const deliveryFee = deliveryMethod === 'delivery' && !freeShippingApplied ? IMPERATRIZ_DELIVERY_FEE : 0;
+  const total = +(baseTotal + deliveryFee).toFixed(2);
+  const cashback = Math.max(0, total) * 0.05;
 
   const [form, setForm] = useState({
     nome: '', cpf: '', email: '', tel: '',
@@ -237,7 +238,7 @@ export default function CheckoutPage() {
     ? 'Retirada · Gratis'
     : freeShippingApplied
       ? 'Frete gratis'
-      : 'Avisado no WhatsApp';
+      : `R$ ${deliveryFee.toFixed(2).replace('.', ',')}`;
 
   const Stepper = () => (
     <div style={{ padding: '16px 0 28px', maxWidth: 480, margin: '0 auto' }}>
@@ -308,7 +309,7 @@ export default function CheckoutPage() {
               {deliveryEnabled && (
                 <button onClick={() => setDeliveryMethod('delivery')} style={{ padding: '16px 18px', borderRadius: 12, border: `1.5px solid ${deliveryMethod === 'delivery' ? '#3b82f6' : 'rgba(255,255,255,0.07)'}`, background: deliveryMethod === 'delivery' ? 'rgba(59,130,246,0.08)' : 'rgba(255,255,255,0.02)', textAlign: 'left', cursor: 'pointer', fontFamily: 'inherit' }}>
                   <p style={{ fontSize: 14, fontWeight: 800, color: '#fff', marginBottom: 4 }}>Entrega</p>
-                  <p style={{ fontSize: 11, color: deliveryMethod === 'delivery' ? '#60a5fa' : '#555' }}>{freeShippingApplied ? 'Frete gratis para este pedido' : 'Valor avisado no WhatsApp'}</p>
+                  <p style={{ fontSize: 11, color: deliveryMethod === 'delivery' ? '#60a5fa' : '#555' }}>{freeShippingApplied ? 'Frete gratis para este pedido' : 'Taxa fixa de R$ 10,00 em Imperatriz'}</p>
                 </button>
               )}
               {pickupEnabled && (
@@ -354,9 +355,7 @@ export default function CheckoutPage() {
                     <p style={{ fontSize: 12, color: '#60a5fa', lineHeight: 1.6 }}>
                       {freeShippingApplied
                         ? 'Frete gratis aplicado neste pedido.'
-                        : whatsapp
-                          ? `O valor do frete sera informado manualmente no WhatsApp ${whatsapp} antes do pagamento.`
-                          : 'O valor do frete sera informado manualmente pelo WhatsApp apos o pedido.'}
+                        : 'Entrega com taxa fixa de R$ 10,00 para toda Imperatriz.'}
                     </p>
                   </div>
                 </div>
@@ -449,7 +448,7 @@ export default function CheckoutPage() {
               {deliveryMethod === 'pickup' ? <Store size={16} style={{ color: '#22C55E', flexShrink: 0, marginTop: 2 }} /> : <MapPin size={16} style={{ color: '#60a5fa', flexShrink: 0, marginTop: 2 }} />}
               <div>
                 <p style={{ fontSize: 12, fontWeight: 800, color: '#fff', marginBottom: 3 }}>
-                  {deliveryMethod === 'pickup' ? 'Retirada na loja · Gratuita' : freeShippingApplied ? 'Entrega com frete gratis' : 'Entrega com frete avisado no WhatsApp'}
+                  {deliveryMethod === 'pickup' ? 'Retirada na loja · Gratuita' : freeShippingApplied ? 'Entrega com frete gratis' : 'Entrega com taxa fixa de R$ 10,00'}
                 </p>
                 {deliveryMethod === 'pickup' ? (
                   <>
@@ -464,7 +463,7 @@ export default function CheckoutPage() {
                   </>
                 ) : (
                   <span style={{ fontSize: 11, color: '#888' }}>
-                    {freeShippingApplied ? 'Sua entrega entrou em promoção de frete grátis.' : whatsapp ? `A loja confirma o valor do frete pelo WhatsApp ${whatsapp}.` : 'A loja confirma o valor do frete pelo WhatsApp após o pedido.'}
+                    {freeShippingApplied ? 'Sua entrega entrou em promoção de frete grátis.' : 'A taxa de entrega em Imperatriz é fixa: R$ 10,00.'}
                   </span>
                 )}
               </div>
@@ -511,7 +510,7 @@ export default function CheckoutPage() {
                 )}
                 {!freeShippingApplied && deliveryMethod === 'delivery' && (
                   <p style={{ fontSize: 11, color: '#666', lineHeight: 1.5 }}>
-                    O frete não entra nesse total. A loja informa o valor manualmente antes do pagamento e o checkout online só será liberado depois dessa confirmação.
+                    A taxa fixa de entrega em Imperatriz já foi adicionada ao total do pedido.
                   </p>
                 )}
                 <div style={{ height: 1, background: 'rgba(255,255,255,0.05)' }} />
@@ -592,7 +591,7 @@ export default function CheckoutPage() {
         </div>
         {deliveryMethod === 'delivery' && !freeShippingApplied && (
           <p style={{ fontSize: 11, color: '#666', lineHeight: 1.5 }}>
-            O frete nao entra nesse total. A loja informa o valor manualmente antes do pagamento e o checkout online só é liberado depois disso.
+            A taxa fixa de entrega em Imperatriz já está incluída nesse total.
           </p>
         )}
         <div style={{ height: 1, background: 'rgba(255,255,255,0.06)' }} />

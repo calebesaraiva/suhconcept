@@ -7,6 +7,7 @@ import { getStoreSettingsMap, parseBool, parseNumber } from '../lib/storeSetting
 const router = Router();
 
 const REQUIRED_DELIVERY_FIELDS = ['cep', 'rua', 'num', 'bairro', 'cidade', 'estado'] as const;
+const IMPERATRIZ_DELIVERY_FEE = 10;
 const normalizeEmail = (value: unknown) => String(value ?? '').trim().toLowerCase();
 const normalizeCpf = (value: unknown) => String(value ?? '').replace(/\D/g, '').trim();
 const normalizePhone = (value: unknown) => String(value ?? '').replace(/\D/g, '').trim();
@@ -146,14 +147,18 @@ router.post('/', async (req, res) => {
     const freeShippingApplied =
       selectedDeliveryMethod === 'delivery' &&
       (freeShipPromo || subtotal >= freeShipThreshold || couponFreeShipping);
+    const shippingAmount =
+      selectedDeliveryMethod === 'delivery' && !freeShippingApplied
+        ? IMPERATRIZ_DELIVERY_FEE
+        : 0;
 
     const shippingMessage = selectedDeliveryMethod === 'pickup'
       ? 'Retirada na loja'
       : freeShippingApplied
         ? 'Frete grátis aplicado'
-        : manualShippingMessage;
+        : `Taxa fixa de entrega em Imperatriz: R$ ${shippingAmount.toFixed(2).replace('.', ',')}`;
 
-    const total = +Math.max(0, subtotal - discountAmount).toFixed(2);
+    const total = +Math.max(0, subtotal - discountAmount + shippingAmount).toFixed(2);
     const cashback = +(total * 0.05).toFixed(2);
     const paymentMethodLabel = isPixPayment
       ? 'PagBank PIX'
@@ -213,6 +218,7 @@ router.post('/', async (req, res) => {
           address: {
             ...(normalizedAddress || {}),
             freeShippingApplied,
+            shippingAmount,
             shippingMessage,
             payment: {
               provider: pagBankConfig ? 'pagbank' : 'manual',
@@ -320,7 +326,7 @@ router.post('/', async (req, res) => {
           customerEmail: normalizedCustomerEmail,
           customerPhone: normalizedCustomerPhone,
           customerCpf: normalizedCustomerCpf,
-          discountAmount,
+          discountAmount: totalDiscount,
           paymentMethod: isPixPayment ? 'PIX' : 'CREDIT_CARD',
           items: items.map((item: { productId: string; productName: string; quantity: number }) => {
             const prod = products.find((p) => p.id === item.productId)!;
@@ -335,7 +341,7 @@ router.post('/', async (req, res) => {
           shippingType: selectedDeliveryMethod === 'delivery'
             ? (freeShippingApplied ? 'FREE' : undefined)
             : undefined,
-          shippingAmount: 0,
+          shippingAmount,
           shippingAddress: selectedDeliveryMethod === 'delivery' ? normalizedAddress || undefined : undefined,
         });
 
@@ -395,6 +401,7 @@ router.post('/', async (req, res) => {
       shipping: {
         method: selectedDeliveryMethod,
         freeShippingApplied,
+        amount: shippingAmount,
         message: shippingMessage,
       },
     });

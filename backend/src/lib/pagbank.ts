@@ -227,7 +227,7 @@ export async function createPagBankCheckout(
       reference_id: item.referenceId,
       name: item.name,
       quantity: item.quantity,
-      unit_amount: item.unitAmount,
+      unit_amount: toCents(item.unitAmount),
     })),
     discount_amount: payload.discountAmount > 0 ? toCents(payload.discountAmount) : undefined,
     payment_methods: [{ type: payload.paymentMethod }],

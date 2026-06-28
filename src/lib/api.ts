@@ -51,16 +51,18 @@ export interface CreateOrderPayload {
 
 export interface ApiOrder {
   id: string; customerName: string; customerEmail: string;
-  items: { productName: string; quantity: number; price: number; size: string; color: string }[];
+  customerPhone?: string; customerCpf?: string;
+  items: { productName: string; quantity: number; price: number; pixPrice?: number; size: string; color: string }[];
   subtotal: number; total: number; discount: number;
   status: string; paymentMethod: string; deliveryMethod: string;
-  address?: Record<string, string>; cashback: number;
-  couponCode?: string; notes?: string; createdAt: string;
+  address?: Record<string, unknown>; cashback: number;
+  couponCode?: string; notes?: string; createdAt: string; updatedAt?: string;
 }
 
 export interface OrderShippingInfo {
   method: string;
   freeShippingApplied: boolean;
+  amount?: number;
   message: string;
 }
 
@@ -92,6 +94,15 @@ export interface ApiCoupon {
 export interface DashboardAlert {
   id: string; type: 'order' | 'stock'; title: string; desc: string;
   time: string | null; color: string; urgent: boolean;
+  orderId?: string;
+  customerName?: string;
+  customerEmail?: string;
+  customerPhone?: string;
+  total?: number;
+  paymentMethod?: string;
+  itemsCount?: number;
+  itemsSummary?: string;
+  addressSummary?: string;
 }
 
 export interface DashboardAlerts {

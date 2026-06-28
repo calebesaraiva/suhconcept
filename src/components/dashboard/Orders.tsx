@@ -24,6 +24,25 @@ const card: React.CSSProperties = {
   border: '1px solid rgba(255,255,255,0.06)',
 };
 
+function getAddressMeta(order: ApiOrder) {
+  const address = order.address && typeof order.address === 'object'
+    ? order.address as Record<string, unknown>
+    : {};
+  const shippingAmount = typeof address.shippingAmount === 'number' ? address.shippingAmount : 0;
+  return {
+    address,
+    shippingAmount,
+    addressLines: [
+      address.rua,
+      address.num ? `Nº ${address.num}` : '',
+      address.comp ? `Compl. ${address.comp}` : '',
+      address.bairro,
+      address.cidade && address.estado ? `${address.cidade}/${address.estado}` : address.cidade || address.estado,
+      address.cep ? `CEP ${address.cep}` : '',
+    ].filter(Boolean).map(String),
+  };
+}
+
 export default function Orders() {
   const { showToast } = useStore();
   const [search, setSearch] = useState('');
@@ -188,12 +207,14 @@ export default function Orders() {
               onClick={e => e.stopPropagation()}
               style={{ background: '#111117', borderRadius: 22, border: '1px solid rgba(255,255,255,0.08)', padding: 28, maxWidth: 520, width: '100%', maxHeight: '85vh', overflowY: 'auto' }}>
 
-              <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 24 }}>
-                <div>
-                  <p style={{ fontSize: 10, color: '#a855f7', fontWeight: 700, letterSpacing: '0.12em', marginBottom: 5 }}>PEDIDO #{selected.id.slice(-8).toUpperCase()}</p>
-                  <h3 style={{ fontSize: 18, fontWeight: 900, color: '#fff', marginBottom: 3 }}>{selected.customerName}</h3>
-                  <p style={{ fontSize: 12, color: '#999' }}>{selected.customerEmail}</p>
-                </div>
+                <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 24 }}>
+                  <div>
+                    <p style={{ fontSize: 10, color: '#a855f7', fontWeight: 700, letterSpacing: '0.12em', marginBottom: 5 }}>PEDIDO #{selected.id.slice(-8).toUpperCase()}</p>
+                    <h3 style={{ fontSize: 18, fontWeight: 900, color: '#fff', marginBottom: 3 }}>{selected.customerName}</h3>
+                    <p style={{ fontSize: 12, color: '#999' }}>{selected.customerEmail}</p>
+                    {selected.customerPhone && <p style={{ fontSize: 12, color: '#777', marginTop: 4 }}>Telefone: {selected.customerPhone}</p>}
+                    {selected.customerCpf && <p style={{ fontSize: 12, color: '#777', marginTop: 2 }}>CPF: {selected.customerCpf}</p>}
+                  </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                   <span style={{ fontSize: 9, fontWeight: 900, color: (statusConfig[selected.status] ?? statusConfig['pendente']).color, background: `${(statusConfig[selected.status] ?? statusConfig['pendente']).color}15`, padding: '5px 11px', borderRadius: 20, letterSpacing: '0.08em' }}>
                     {(statusConfig[selected.status] ?? statusConfig['pendente']).label.toUpperCase()}
@@ -204,6 +225,23 @@ export default function Orders() {
                 </div>
               </div>
 
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 18 }}>
+                <div style={{ background: '#0d0d0d', borderRadius: 14, padding: '14px 16px', border: '1px solid rgba(255,255,255,0.05)' }}>
+                  <p style={{ fontSize: 10, color: '#666', fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase', marginBottom: 8 }}>Pagamento</p>
+                  <p style={{ fontSize: 14, color: '#fff', fontWeight: 800, marginBottom: 6 }}>{selected.paymentMethod}</p>
+                  <p style={{ fontSize: 11, color: '#777' }}>Criado em {new Date(selected.createdAt).toLocaleString('pt-BR')}</p>
+                </div>
+                <div style={{ background: '#0d0d0d', borderRadius: 14, padding: '14px 16px', border: '1px solid rgba(255,255,255,0.05)' }}>
+                  <p style={{ fontSize: 10, color: '#666', fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase', marginBottom: 8 }}>Entrega</p>
+                  <p style={{ fontSize: 14, color: '#fff', fontWeight: 800, marginBottom: 6 }}>{selected.deliveryMethod === 'pickup' ? 'Retirada na loja' : 'Entrega a domicílio'}</p>
+                  <p style={{ fontSize: 11, color: '#777' }}>
+                    {selected.deliveryMethod === 'pickup'
+                      ? 'Sem endereço de entrega'
+                      : getAddressMeta(selected).addressLines.join(' · ') || 'Endereço não informado'}
+                  </p>
+                </div>
+              </div>
+
               {/* Items */}
               <div style={{ background: '#0d0d0d', borderRadius: 14, padding: '4px 0', marginBottom: 16 }}>
                 {selected.items.map((item, i) => (
@@ -211,16 +249,49 @@ export default function Orders() {
                     <div>
                       <p style={{ fontSize: 13, fontWeight: 600, color: '#ccc', marginBottom: 3 }}>{item.productName}</p>
                       <p style={{ fontSize: 11, color: '#666' }}>Tam: {item.size}{item.color ? ` · ${item.color}` : ''} · Qtd: {item.quantity}</p>
+                      <p style={{ fontSize: 10.5, color: '#555', marginTop: 4 }}>Unitário: R$ {item.price.toFixed(2).replace('.', ',')}</p>
                     </div>
                     <span style={{ fontSize: 13, fontWeight: 800, color: '#fff' }}>R$ {(item.price * item.quantity).toFixed(2).replace('.', ',')}</span>
                   </div>
                 ))}
               </div>
 
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '14px 0', borderTop: '1px solid rgba(255,255,255,0.06)', marginBottom: 22 }}>
-                <span style={{ fontWeight: 800, color: '#fff', fontSize: 15 }}>Total</span>
-                <span style={{ fontWeight: 900, color: '#a855f7', fontSize: 20 }}>R$ {selected.total.toFixed(2).replace('.', ',')}</span>
+              <div style={{ background: '#0d0d0d', borderRadius: 14, padding: '14px 16px', border: '1px solid rgba(255,255,255,0.05)', marginBottom: 22 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: '#777', marginBottom: 8 }}>
+                  <span>Subtotal</span>
+                  <span>R$ {selected.subtotal.toFixed(2).replace('.', ',')}</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: '#777', marginBottom: 8 }}>
+                  <span>Desconto</span>
+                  <span>{selected.discount > 0 ? `-R$ ${selected.discount.toFixed(2).replace('.', ',')}` : 'R$ 0,00'}</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: '#777', marginBottom: 8 }}>
+                  <span>Entrega</span>
+                  <span>
+                    {selected.deliveryMethod === 'pickup'
+                      ? 'Grátis'
+                      : getAddressMeta(selected).shippingAmount > 0
+                        ? `R$ ${getAddressMeta(selected).shippingAmount.toFixed(2).replace('.', ',')}`
+                        : 'Grátis'}
+                  </span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: '#777', marginBottom: 12 }}>
+                  <span>Cashback</span>
+                  <span>R$ {selected.cashback.toFixed(2).replace('.', ',')}</span>
+                </div>
+                <div style={{ height: 1, background: 'rgba(255,255,255,0.06)', marginBottom: 12 }} />
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ fontWeight: 800, color: '#fff', fontSize: 15 }}>Total pago</span>
+                  <span style={{ fontWeight: 900, color: '#a855f7', fontSize: 20 }}>R$ {selected.total.toFixed(2).replace('.', ',')}</span>
+                </div>
               </div>
+
+              {selected.notes && (
+                <div style={{ background: 'rgba(168,85,247,0.06)', borderRadius: 14, padding: '14px 16px', border: '1px solid rgba(168,85,247,0.15)', marginBottom: 18 }}>
+                  <p style={{ fontSize: 10, color: '#a855f7', fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase', marginBottom: 8 }}>Observações do pedido</p>
+                  <p style={{ fontSize: 12, color: '#d1d5db', lineHeight: 1.6 }}>{selected.notes}</p>
+                </div>
+              )}
 
               {/* Status update */}
               <div style={{ marginBottom: 20 }}>
