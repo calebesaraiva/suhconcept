@@ -72,6 +72,17 @@ export default function Settings() {
   const [freeShipPromo, setFreeShipPromo] = useState(false);
   const [freeShipThreshold, setFreeShipThreshold] = useState(599.99);
   const [whatsapp, setWhatsapp] = useState('');
+  const [melhorEnvioEnabled, setMelhorEnvioEnabled] = useState(true);
+  const [melhorEnvioCepOrigem, setMelhorEnvioCepOrigem] = useState('65900000');
+  const [melhorEnvioServiceIds, setMelhorEnvioServiceIds] = useState('');
+  const [melhorEnvioAccessToken, setMelhorEnvioAccessToken] = useState('');
+  const [melhorEnvioEnvironment, setMelhorEnvioEnvironment] = useState<'production' | 'sandbox'>('production');
+  const [melhorEnvioAppName, setMelhorEnvioAppName] = useState('SUH CONCEPT');
+  const [melhorEnvioAppEmail, setMelhorEnvioAppEmail] = useState('suporte@suhconcept.com');
+  const [correiosPesoGramas, setCorreiosPesoGramas] = useState(500);
+  const [correiosComprimentoCm, setCorreiosComprimentoCm] = useState(24);
+  const [correiosLarguraCm, setCorreiosLarguraCm] = useState(18);
+  const [correiosAlturaCm, setCorreiosAlturaCm] = useState(8);
   const [pickupEnabled, setPickupEnabled] = useState(true);
   const [storeAddress, setStoreAddress] = useState('');
   const [storeHours, setStoreHours] = useState('Seg–Sáb: 9h–19h · Dom: 10h–14h');
@@ -105,6 +116,21 @@ export default function Settings() {
       if (s.freeShipPromo !== undefined)     setFreeShipPromo(s.freeShipPromo === 'true');
       if (s.freeShipThreshold)               setFreeShipThreshold(Number(s.freeShipThreshold));
       if (s.whatsapp)                        setWhatsapp(s.whatsapp);
+      if (s.melhorEnvioEnabled !== undefined) setMelhorEnvioEnabled(s.melhorEnvioEnabled === 'true');
+      else if (s.correiosEnabled !== undefined) setMelhorEnvioEnabled(s.correiosEnabled === 'true');
+      if (s.melhorEnvioCepOrigem)            setMelhorEnvioCepOrigem(s.melhorEnvioCepOrigem);
+      else if (s.correiosCepOrigem)          setMelhorEnvioCepOrigem(s.correiosCepOrigem);
+      if (s.melhorEnvioServiceIds !== undefined) setMelhorEnvioServiceIds(s.melhorEnvioServiceIds);
+      else if (s.correiosServiceCodes)       setMelhorEnvioServiceIds(s.correiosServiceCodes);
+      if (s.melhorEnvioAccessToken)          setMelhorEnvioAccessToken(s.melhorEnvioAccessToken);
+      else if (s.correiosToken)              setMelhorEnvioAccessToken(s.correiosToken);
+      if (s.melhorEnvioEnvironment === 'sandbox' || s.melhorEnvioEnvironment === 'production') setMelhorEnvioEnvironment(s.melhorEnvioEnvironment);
+      if (s.melhorEnvioAppName)              setMelhorEnvioAppName(s.melhorEnvioAppName);
+      if (s.melhorEnvioAppEmail)             setMelhorEnvioAppEmail(s.melhorEnvioAppEmail);
+      if (s.correiosPesoGramas)              setCorreiosPesoGramas(Number(s.correiosPesoGramas));
+      if (s.correiosComprimentoCm)           setCorreiosComprimentoCm(Number(s.correiosComprimentoCm));
+      if (s.correiosLarguraCm)               setCorreiosLarguraCm(Number(s.correiosLarguraCm));
+      if (s.correiosAlturaCm)                setCorreiosAlturaCm(Number(s.correiosAlturaCm));
       if (s.pickupEnabled !== undefined)     setPickupEnabled(s.pickupEnabled === 'true');
       if (s.storeAddress)                    setStoreAddress(s.storeAddress);
       if (s.storeHours)                      setStoreHours(s.storeHours);
@@ -140,6 +166,17 @@ export default function Settings() {
         freeShipPromo: String(freeShipPromo),
         freeShipThreshold: String(freeShipThreshold),
         whatsapp,
+        melhorEnvioEnabled: String(melhorEnvioEnabled),
+        melhorEnvioCepOrigem,
+        melhorEnvioServiceIds,
+        melhorEnvioAccessToken,
+        melhorEnvioEnvironment,
+        melhorEnvioAppName,
+        melhorEnvioAppEmail,
+        correiosPesoGramas: String(correiosPesoGramas),
+        correiosComprimentoCm: String(correiosComprimentoCm),
+        correiosLarguraCm: String(correiosLarguraCm),
+        correiosAlturaCm: String(correiosAlturaCm),
         pickupEnabled: String(pickupEnabled),
         storeAddress,
         storeHours,
@@ -264,10 +301,62 @@ export default function Settings() {
                 </div>
               </div>
 
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 14px', borderRadius: 10, background: 'rgba(216,168,74,0.06)', border: '1px solid rgba(216,168,74,0.16)' }}>
+                <div>
+                  <p style={{ fontWeight: 700, color: melhorEnvioEnabled ? '#d8a84a' : '#ccc', fontSize: 13 }}>Cálculo automático · Melhor Envio</p>
+                  <p style={{ fontSize: 11, color: '#777', marginTop: 2 }}>Cota valor e prazo pelo CEP antes do checkout</p>
+                </div>
+                <Toggle on={melhorEnvioEnabled} color="#d8a84a" onChange={setMelhorEnvioEnabled} />
+              </div>
+
+              {melhorEnvioEnabled && (
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+                  <div>
+                    <label style={lbl}>CEP de origem</label>
+                    <input style={inp} value={melhorEnvioCepOrigem} onChange={e => setMelhorEnvioCepOrigem(e.target.value)} placeholder="65900000" onFocus={focIn} onBlur={focOut} />
+                  </div>
+                  <div>
+                    <label style={lbl}>Ambiente</label>
+                    <select style={{ ...inp, cursor: 'pointer' }} value={melhorEnvioEnvironment} onChange={e => setMelhorEnvioEnvironment(e.target.value as 'production' | 'sandbox')} onFocus={focIn} onBlur={focOut}>
+                      <option value="production" style={{ background: '#111' }}>Produção</option>
+                      <option value="sandbox" style={{ background: '#111' }}>Sandbox</option>
+                    </select>
+                  </div>
+                  <div style={{ gridColumn: 'span 2' }}>
+                    <label style={lbl}>Access Token Melhor Envio</label>
+                    <input type="password" style={inp} value={melhorEnvioAccessToken} onChange={e => setMelhorEnvioAccessToken(e.target.value)} placeholder="Cole aqui o bearer token OAuth do Melhor Envio" onFocus={focIn} onBlur={focOut} />
+                  </div>
+                  <div>
+                    <label style={lbl}>Nome no User-Agent</label>
+                    <input style={inp} value={melhorEnvioAppName} onChange={e => setMelhorEnvioAppName(e.target.value)} placeholder="SUH CONCEPT" onFocus={focIn} onBlur={focOut} />
+                  </div>
+                  <div>
+                    <label style={lbl}>E-mail técnico no User-Agent</label>
+                    <input style={inp} value={melhorEnvioAppEmail} onChange={e => setMelhorEnvioAppEmail(e.target.value)} placeholder="suporte@suhconcept.com" onFocus={focIn} onBlur={focOut} />
+                  </div>
+                  <div style={{ gridColumn: 'span 2' }}>
+                    <label style={lbl}>IDs de serviços do Melhor Envio</label>
+                    <input style={inp} value={melhorEnvioServiceIds} onChange={e => setMelhorEnvioServiceIds(e.target.value)} placeholder="Opcional. Ex.: 1,2,17" onFocus={focIn} onBlur={focOut} />
+                  </div>
+                  <div>
+                    <label style={lbl}>Peso padrão (g)</label>
+                    <input type="number" style={inp} value={correiosPesoGramas} onChange={e => setCorreiosPesoGramas(Number(e.target.value))} min={1} onFocus={focIn} onBlur={focOut} />
+                  </div>
+                  <div>
+                    <label style={lbl}>Medidas base C x L x A (cm)</label>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8 }}>
+                      <input type="number" style={inp} value={correiosComprimentoCm} onChange={e => setCorreiosComprimentoCm(Number(e.target.value))} min={16} onFocus={focIn} onBlur={focOut} />
+                      <input type="number" style={inp} value={correiosLarguraCm} onChange={e => setCorreiosLarguraCm(Number(e.target.value))} min={11} onFocus={focIn} onBlur={focOut} />
+                      <input type="number" style={inp} value={correiosAlturaCm} onChange={e => setCorreiosAlturaCm(Number(e.target.value))} min={2} onFocus={focIn} onBlur={focOut} />
+                    </div>
+                  </div>
+                </div>
+              )}
+
               <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, padding: '10px 12px', borderRadius: 8, background: 'rgba(59,130,246,0.06)', border: '1px solid rgba(59,130,246,0.15)' }}>
                 <Info size={13} style={{ color: '#3b82f6', flexShrink: 0, marginTop: 1 }} />
                 <p style={{ fontSize: 11.5, color: '#3b82f6', lineHeight: 1.6 }}>
-                  O valor do frete é informado manualmente pelo WhatsApp após o pedido ser feito. O cliente receberá o contato da loja com o valor antes de efetuar o pagamento.
+                  O Melhor Envio usa OAuth 2.0. Com token ativo, o frete entra automaticamente no total e no checkout. Se o token estiver vazio ou expirado, a loja continua com atendimento manual como segurança.
                 </p>
               </div>
             </div>

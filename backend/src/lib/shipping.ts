@@ -13,7 +13,7 @@ export interface ShippingQuoteOption {
 }
 
 export interface ShippingQuoteResult {
-  provider: 'correios' | 'local';
+  provider: 'melhor_envio' | 'local';
   originCep: string;
   destinationCep: string;
   destinationCity?: string;
@@ -78,20 +78,30 @@ function getNested(data: unknown, keys: string[]) {
 }
 
 function getConfig(settings: StoreSettingsMap) {
-  const token = String(process.env.CORREIOS_TOKEN || settings.correiosToken || '').trim();
-  const originCep = onlyDigits(process.env.CORREIOS_CEP_ORIGEM || settings.correiosCepOrigem || settings.storeCep || '65900000');
-  const serviceCodes = String(process.env.CORREIOS_SERVICE_CODES || settings.correiosServiceCodes || '03298,03220')
+  const token = String(process.env.MELHOR_ENVIO_ACCESS_TOKEN || settings.melhorEnvioAccessToken || '').trim();
+  const originCep = onlyDigits(process.env.MELHOR_ENVIO_CEP_ORIGEM || settings.melhorEnvioCepOrigem || settings.correiosCepOrigem || settings.storeCep || '65900000');
+  const serviceCodes = String(process.env.MELHOR_ENVIO_SERVICE_IDS || settings.melhorEnvioServiceIds || '')
     .split(',')
     .map((code) => code.trim())
     .filter(Boolean);
+  const environment = String(process.env.MELHOR_ENVIO_ENVIRONMENT || settings.melhorEnvioEnvironment || 'production').trim().toLowerCase() === 'sandbox'
+    ? 'sandbox'
+    : 'production';
+  const appName = String(process.env.MELHOR_ENVIO_APP_NAME || settings.melhorEnvioAppName || settings.storeName || 'SUH CONCEPT').trim() || 'SUH CONCEPT';
+  const appEmail = String(process.env.MELHOR_ENVIO_APP_EMAIL || settings.melhorEnvioAppEmail || settings.smtpFromEmail || 'suporte@suhconcept.com').trim() || 'suporte@suhconcept.com';
 
   return {
-    enabled: parseBool(settings.correiosEnabled, true),
+    enabled: settings.melhorEnvioEnabled !== undefined
+      ? parseBool(settings.melhorEnvioEnabled, true)
+      : parseBool(settings.correiosEnabled, true),
     token,
     originCep,
-    serviceCodes: serviceCodes.length ? serviceCodes : ['03298', '03220'],
-    priceBaseUrl: String(process.env.CORREIOS_PRECO_BASE_URL || 'https://api.correios.com.br/preco/v1').replace(/\/+$/, ''),
-    deadlineBaseUrl: String(process.env.CORREIOS_PRAZO_BASE_URL || 'https://api.correios.com.br/prazo/v1').replace(/\/+$/, ''),
+    serviceCodes,
+    environment,
+    baseUrl: environment === 'sandbox'
+      ? 'https://sandbox.melhorenvio.com.br'
+      : 'https://melhorenvio.com.br',
+    userAgent: `${appName} (${appEmail})`,
     weightGrams: Math.max(1, parseNumber(process.env.CORREIOS_PACKAGE_WEIGHT_GRAMS || settings.correiosPesoGramas, 500)),
     lengthCm: Math.max(16, parseNumber(process.env.CORREIOS_PACKAGE_LENGTH_CM || settings.correiosComprimentoCm, 24)),
     widthCm: Math.max(11, parseNumber(process.env.CORREIOS_PACKAGE_WIDTH_CM || settings.correiosLarguraCm, 18)),
@@ -136,13 +146,64 @@ export async function lookupCepAddress(rawCep: unknown): Promise<CepAddressResul
   };
 }
 
-async function correiosGet(url: URL, token: string) {
-  const res = await fetch(url, {
-    headers: {
-      Authorization: `Bearer ${token}`,
-      Accept: 'application/json',
+type MelhorEnvioQuote = {
+  id?: number | string;
+  name?: string;
+  price?: string | number;
+  custom_price?: string | number;
+  delivery_time?: number;
+  custom_delivery_time?: number;
+  delivery_range?: { min?: number; max?: number };
+  custom_delivery_range?: { min?: number; max?: number };
+  company?: { name?: string };
+  error?: string;
+};
+
+async function melhorEnvioCalculate(
+  config: ReturnType<typeof getConfig>,
+  destinationCep: string,
+  subtotal: number,
+  itemCount: number,
+) {
+  const quantity = Math.max(1, Math.trunc(itemCount || 1));
+  const unitInsuranceValue = +Math.max(0.01, subtotal / quantity).toFixed(2);
+  const unitWeightKg = +Math.max(0.001, config.weightGrams / 1000).toFixed(3);
+
+  const payload: Record<string, unknown> = {
+    from: { postal_code: config.originCep },
+    to: { postal_code: destinationCep },
+    products: [
+      {
+        id: 'suhconcept-order',
+        width: config.widthCm,
+        height: config.heightCm,
+        length: config.lengthCm,
+        weight: unitWeightKg,
+        insurance_value: unitInsuranceValue,
+        quantity,
+      },
+    ],
+    options: {
+      receipt: false,
+      own_hand: false,
     },
+  };
+
+  if (config.serviceCodes.length) {
+    payload.services = config.serviceCodes.join(',');
+  }
+
+  const res = await fetch(`${config.baseUrl}/api/v2/me/shipment/calculate`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${config.token}`,
+      Accept: 'application/json',
+      'Content-Type': 'application/json',
+      'User-Agent': config.userAgent,
+    },
+    body: JSON.stringify(payload),
   });
+
   const text = await res.text();
   const data: unknown = (() => {
     try {
@@ -153,62 +214,93 @@ async function correiosGet(url: URL, token: string) {
   })();
 
   if (!res.ok) {
-    const message = data && typeof data === 'object'
-      ? String(getNested(data, ['msg', 'message', 'erro', 'descricao']) || '')
-      : String(data || '');
-    throw new ShippingQuoteError(message || `Correios respondeu ${res.status}`, res.status);
+    const errors = data && typeof data === 'object'
+      ? getNested(data, ['message', 'error', 'errors'])
+      : data;
+    const message =
+      typeof errors === 'string'
+        ? errors
+        : errors && typeof errors === 'object'
+          ? JSON.stringify(errors)
+          : `Melhor Envio respondeu ${res.status}`;
+
+    if (res.status === 401) {
+      throw new ShippingQuoteError('Token do Melhor Envio inválido ou expirado. Atualize o token no painel da loja.', 401);
+    }
+
+    throw new ShippingQuoteError(message, res.status);
   }
-  return Array.isArray(data) ? data[0] : data;
+
+  if (!Array.isArray(data)) {
+    throw new ShippingQuoteError('Melhor Envio não retornou opções válidas de frete.', 422);
+  }
+
+  return data as MelhorEnvioQuote[];
 }
 
-async function quoteService(
-  config: ReturnType<typeof getConfig>,
-  destinationCep: string,
-  serviceCode: string,
-  itemCount: number,
-): Promise<ShippingQuoteOption> {
-  const quantity = Math.max(1, Math.trunc(itemCount || 1));
-  const weightGrams = Math.max(1, config.weightGrams * quantity);
-  const packageHeight = Math.max(2, config.heightCm * quantity);
-
-  const priceUrl = new URL(`${config.priceBaseUrl}/nacional/${encodeURIComponent(serviceCode)}`);
-  priceUrl.searchParams.set('cepOrigem', config.originCep);
-  priceUrl.searchParams.set('cepDestino', destinationCep);
-  priceUrl.searchParams.set('psObjeto', String(weightGrams));
-  priceUrl.searchParams.set('tpObjeto', '2');
-  priceUrl.searchParams.set('comprimento', String(config.lengthCm));
-  priceUrl.searchParams.set('largura', String(config.widthCm));
-  priceUrl.searchParams.set('altura', String(packageHeight));
-
-  const priceData = await correiosGet(priceUrl, config.token);
-  const rawPrice = getNested(priceData, ['pcFinal', 'precoFinal', 'valorFinal', 'valor', 'vlPreco', 'preco']);
-  const price = parseMoney(rawPrice) + config.handlingFee;
-
-  if (!price || price <= 0) {
-    throw new ShippingQuoteError('Correios não retornou valor de frete para este CEP.', 422);
+function resolveDeadlineText(option: MelhorEnvioQuote) {
+  const customDeadline = Number(option.custom_delivery_time);
+  if (Number.isFinite(customDeadline) && customDeadline > 0) {
+    return {
+      deadlineDays: customDeadline,
+      deadlineText: `${customDeadline} dia${customDeadline > 1 ? 's' : ''} úteis`,
+    };
   }
 
-  let deadlineDays: number | undefined;
-  try {
-    const deadlineUrl = new URL(`${config.deadlineBaseUrl}/nacional/${encodeURIComponent(serviceCode)}`);
-    deadlineUrl.searchParams.set('cepOrigem', config.originCep);
-    deadlineUrl.searchParams.set('cepDestino', destinationCep);
-    const deadlineData = await correiosGet(deadlineUrl, config.token);
-    const rawDeadline = getNested(deadlineData, ['prazoEntrega', 'prazo', 'dias', 'nuPrazoEntrega']);
-    const parsed = Number(rawDeadline);
-    if (Number.isFinite(parsed) && parsed > 0) deadlineDays = parsed;
-  } catch {
-    // Preço e prazo são APIs separadas; se o prazo falhar, ainda exibimos o valor.
+  const range = option.custom_delivery_range || option.delivery_range;
+  const min = Number(range?.min);
+  const max = Number(range?.max);
+  if (Number.isFinite(min) && Number.isFinite(max) && min > 0 && max > 0) {
+    return {
+      deadlineDays: max,
+      deadlineText: min === max ? `${max} dia${max > 1 ? 's' : ''} úteis` : `${min} a ${max} dias úteis`,
+    };
+  }
+
+  const fallbackDeadline = Number(option.delivery_time);
+  if (Number.isFinite(fallbackDeadline) && fallbackDeadline > 0) {
+    return {
+      deadlineDays: fallbackDeadline,
+      deadlineText: `${fallbackDeadline} dia${fallbackDeadline > 1 ? 's' : ''} úteis`,
+    };
   }
 
   return {
-    serviceCode,
-    serviceName: SERVICE_NAMES[serviceCode] || `Correios ${serviceCode}`,
-    price: +price.toFixed(2),
-    originalPrice: +price.toFixed(2),
-    deadlineDays,
-    deadlineText: deadlineDays ? `${deadlineDays} dia${deadlineDays > 1 ? 's' : ''} úteis` : undefined,
+    deadlineDays: undefined,
+    deadlineText: undefined,
   };
+}
+
+function normalizeMelhorEnvioOptions(
+  config: ReturnType<typeof getConfig>,
+  options: MelhorEnvioQuote[],
+): ShippingQuoteOption[] {
+  const normalized = options
+    .filter((option) => !option.error)
+    .map<ShippingQuoteOption | null>((option) => {
+      const basePrice = parseMoney(option.custom_price ?? option.price);
+      if (!basePrice || basePrice <= 0) return null;
+
+      const { deadlineDays, deadlineText } = resolveDeadlineText(option);
+      const serviceCode = String(option.id ?? option.name ?? '');
+      const companyName = String(option.company?.name || '').trim();
+      const rawServiceName = String(option.name || SERVICE_NAMES[serviceCode] || `Serviço ${serviceCode}`).trim();
+
+      return {
+        serviceCode,
+        serviceName: companyName && !rawServiceName.toLowerCase().includes(companyName.toLowerCase())
+          ? `${companyName} · ${rawServiceName}`
+          : rawServiceName,
+        price: +(basePrice + config.handlingFee).toFixed(2),
+        originalPrice: +(basePrice + config.handlingFee).toFixed(2),
+        deadlineDays,
+        deadlineText,
+      } satisfies ShippingQuoteOption;
+    })
+    .filter((option): option is ShippingQuoteOption => option !== null)
+    .sort((a, b) => a.price - b.price);
+
+  return normalized;
 }
 
 export async function quoteShipping(
@@ -246,14 +338,14 @@ export async function quoteShipping(
 
   if (isImperatrizDelivery(resolvedAddress.cidade, resolvedAddress.estado)) {
     const localPrice = freeShippingApplied ? 0 : 10;
-    const option: ShippingQuoteOption = {
+    const option = {
       serviceCode: 'LOCAL-IMP',
       serviceName: 'Entrega local - Imperatriz',
       price: localPrice,
       originalPrice: 10,
       deadlineDays: 1,
       deadlineText: '1 dia útil',
-    };
+    } satisfies ShippingQuoteOption;
 
     return {
       provider: 'local',
@@ -268,14 +360,11 @@ export async function quoteShipping(
   }
 
   if (!config.enabled) throw new ShippingQuoteError('Cálculo automático de frete está desativado.', 503);
-  if (!config.token) throw new ShippingQuoteError('Token dos Correios não configurado. Configure no painel ou na VPS para liberar frete automático.', 503);
-  if (config.originCep.length !== 8) throw new ShippingQuoteError('CEP de origem dos Correios inválido.', 500);
+  if (!config.token) throw new ShippingQuoteError('Token do Melhor Envio não configurado. Atualize no painel da loja para liberar o frete automático.', 503);
+  if (config.originCep.length !== 8) throw new ShippingQuoteError('CEP de origem do Melhor Envio inválido.', 500);
 
-  const quoted = await Promise.allSettled(config.serviceCodes.map((code) => quoteService(config, destinationCep, code, itemCount)));
-  const options = quoted
-    .filter((result): result is PromiseFulfilledResult<ShippingQuoteOption> => result.status === 'fulfilled')
-    .map((result) => result.value)
-    .sort((a, b) => a.price - b.price);
+  const quoted = await melhorEnvioCalculate(config, destinationCep, subtotal, itemCount);
+  const options = normalizeMelhorEnvioOptions(config, quoted);
 
   if (!options.length) {
     throw new ShippingQuoteError(
@@ -292,7 +381,7 @@ export async function quoteShipping(
   const selected = normalizedOptions.find((option) => option.serviceCode === selectedBase.serviceCode) || normalizedOptions[0];
 
   return {
-    provider: 'correios',
+    provider: 'melhor_envio',
     originCep: config.originCep,
     destinationCep,
     destinationCity: resolvedAddress.cidade,

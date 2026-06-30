@@ -475,7 +475,7 @@ export default function CheckoutPage() {
                             ? `Valor: R$ ${shippingAmount.toFixed(2).replace('.', ',')}${shippingQuote.selected.deadlineText ? ` · Prazo estimado: ${shippingQuote.selected.deadlineText}` : ''}. Esse frete já entra no total.`
                             : shippingError
                               ? `${shippingError}${whatsapp ? ` Se precisar, finalize com retirada ou fale conosco no WhatsApp ${whatsapp}.` : ''}`
-                              : 'Digite o CEP. Se for Imperatriz/MA, aplicamos automaticamente Entrega local - Imperatriz: R$ 10,00. Para outras cidades, calculamos pelos Correios antes do pagamento.'}
+                              : 'Digite o CEP. Se for Imperatriz/MA, aplicamos automaticamente Entrega local - Imperatriz: R$ 10,00. Para outras cidades, calculamos pelo Melhor Envio antes do pagamento.'}
                       </p>
                     </div>
                   </div>

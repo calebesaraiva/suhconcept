@@ -60,7 +60,7 @@ export interface ShippingQuoteOption {
 }
 
 export interface ShippingQuoteResponse {
-  provider: 'correios' | 'local';
+  provider: 'melhor_envio' | 'correios' | 'local';
   originCep: string;
   destinationCep: string;
   destinationCity?: string;
