@@ -1,8 +1,10 @@
+import { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, ShoppingBag, Trash2, Plus, Minus, Tag, Truck, Lock, Zap, ArrowRight, Coins } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { useStore } from '../../store/useStore';
 import { getProductPricing, useStorePricingSettings } from '../../lib/storePricing';
+import { api, type ShippingQuoteResponse } from '../../lib/api';
 
 const CASHBACK_RATE = 0.05; // 5%
 
@@ -22,6 +24,61 @@ export default function CartDrawer({ open, onClose }: Props) {
   const progress  = Math.min((subtotal / settings.freeShipThreshold) * 100, 100);
   const pixSaving = subtotalBase - pixBase;
   const cashback  = subtotal * CASHBACK_RATE;
+  const [cep, setCep] = useState('');
+  const [shippingQuote, setShippingQuote] = useState<ShippingQuoteResponse | null>(null);
+  const [shippingLoading, setShippingLoading] = useState(false);
+  const [shippingError, setShippingError] = useState('');
+
+  useEffect(() => {
+    const digits = cep.replace(/\D/g, '');
+    if (!open || digits.length !== 8 || cart.length === 0) {
+      setShippingQuote(null);
+      setShippingError('');
+      setShippingLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+    setShippingLoading(true);
+    setShippingError('');
+
+    const timer = window.setTimeout(() => {
+      api.shipping.quote({
+        cepDestino: digits,
+        subtotal,
+        itemCount: count,
+      })
+        .then((quote) => {
+          if (cancelled) return;
+          setShippingQuote(quote);
+          setShippingError('');
+        })
+        .catch((error) => {
+          if (cancelled) return;
+          setShippingQuote(null);
+          setShippingError(error instanceof Error ? error.message : 'Não foi possível calcular o frete.');
+        })
+        .finally(() => {
+          if (!cancelled) setShippingLoading(false);
+        });
+    }, 350);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [open, cep, subtotal, count, cart.length]);
+
+  const shippingLabel = shippingQuote
+    ? `${shippingQuote.selected.serviceName}: R$ ${shippingQuote.selected.price.toFixed(2).replace('.', ',')}`
+    : shippingLoading
+      ? 'Calculando frete...'
+      : shippingError
+        ? shippingError
+        : freeShip
+          ? 'Frete grátis acima do valor mínimo'
+          : 'Digite seu CEP para calcular';
+  const totalWithShipping = subtotal + (freeShip || !shippingQuote ? 0 : shippingQuote.selected.price);
 
   return (
     <AnimatePresence>
@@ -204,6 +261,22 @@ export default function CartDrawer({ open, onClose }: Props) {
                   </button>
                 </div>
 
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: '14px 16px', borderRadius: 14, background: '#fffdf7', border: '1px solid rgba(12,46,42,0.14)', boxShadow: '0 14px 30px rgba(12,46,42,0.07)' }}>
+                  <label style={{ fontSize: 10.5, color: '#596760', fontWeight: 900, letterSpacing: '0.1em', textTransform: 'uppercase' }}>Calcular frete</label>
+                  <input
+                    value={cep}
+                    onChange={(event) => setCep(event.target.value)}
+                    placeholder="Digite seu CEP"
+                    style={{ width: '100%', background: '#fffdf7', border: '1px solid rgba(12,46,42,0.16)', borderRadius: 10, padding: '10px 12px', color: '#0b2f2b', fontSize: 13, fontFamily: 'inherit', outline: 'none' }}
+                    onFocus={e => (e.currentTarget.style.borderColor = 'rgba(14,90,81,0.42)')}
+                    onBlur={e => (e.currentTarget.style.borderColor = 'rgba(12,46,42,0.16)')}
+                  />
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, fontSize: 12, color: shippingError ? '#9b6d22' : '#596760' }}>
+                    <span>Frete</span>
+                    <span style={{ textAlign: 'right', fontWeight: 700, color: shippingQuote ? '#0e5a51' : shippingError ? '#9b6d22' : '#596760' }}>{shippingLabel}</span>
+                  </div>
+                </div>
+
                 {/* Summary */}
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: '14px 16px', borderRadius: 10, background: '#111', border: '1px solid rgba(255,255,255,0.06)' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: '#666' }}>
@@ -233,14 +306,14 @@ export default function CartDrawer({ open, onClose }: Props) {
                   </div>
                   <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: '#555' }}>
                     <span>Frete</span>
-                    <span style={{ color: freeShip ? '#22C55E' : '#555', fontWeight: freeShip ? 600 : 400 }}>
-                      {freeShip ? 'Grátis 🎉' : 'Calcular no checkout'}
+                    <span style={{ color: freeShip ? '#22C55E' : '#aaa', fontWeight: freeShip ? 800 : 500 }}>
+                      {freeShip ? 'Grátis 🎉' : shippingQuote ? `R$ ${shippingQuote.selected.price.toFixed(2).replace('.', ',')}` : 'Calcular agora'}
                     </span>
                   </div>
                   <div style={{ height: 1, background: 'rgba(255,255,255,0.06)', margin: '2px 0' }} />
                   <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <span style={{ fontWeight: 800, fontSize: 14, color: '#fff' }}>Total</span>
-                    <span style={{ fontWeight: 900, fontSize: 18, color: '#fff' }}>R$ {subtotal.toFixed(2).replace('.', ',')}</span>
+                    <span style={{ fontWeight: 900, fontSize: 14, color: '#fff' }}>Total</span>
+                    <span style={{ fontWeight: 900, fontSize: 18, color: '#fff' }}>R$ {totalWithShipping.toFixed(2).replace('.', ',')}</span>
                   </div>
                   <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11.5 }}>
                     <span style={{ color: '#444' }}>

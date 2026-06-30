@@ -7,13 +7,12 @@ import {
   Tag, Loader2, Store, MapPin, Clock,
 } from 'lucide-react';
 import { useStore } from '../store/useStore';
-import { api } from '../lib/api';
+import { api, type ShippingQuoteResponse } from '../lib/api';
 import { getProductPricing, resolveStorePricingSettings } from '../lib/storePricing';
 
 const STEPS = ['Dados', 'Pagamento', 'Revisão'];
 type PayMethod = 'cartao' | 'pix';
 type DeliveryMethod = 'delivery' | 'pickup';
-const IMPERATRIZ_DELIVERY_FEE = 10;
 
 const inp: React.CSSProperties = {
   width: '100%', background: '#0d0d0d',
@@ -44,7 +43,11 @@ export default function CheckoutPage() {
   const [submitting, setSubmitting] = useState(false);
   const [orderId, setOrderId] = useState('');
   const [summaryOpen, setSummaryOpen] = useState(false);
-  const [shippingMessage, setShippingMessage] = useState('Valor do frete informado manualmente pelo WhatsApp após o pedido.');
+  const [shippingMessage, setShippingMessage] = useState('Calcule o frete para ver o valor final da entrega.');
+  const [shippingQuote, setShippingQuote] = useState<ShippingQuoteResponse | null>(null);
+  const [shippingLoading, setShippingLoading] = useState(false);
+  const [shippingError, setShippingError] = useState('');
+  const [cepLookupLoading, setCepLookupLoading] = useState(false);
   const [settings, setSettings] = useState<Record<string, string>>({});
 
   const deliveryEnabled = settings.deliveryEnabled !== 'false';
@@ -52,6 +55,7 @@ export default function CheckoutPage() {
   const freeShipPromo = settings.freeShipPromo === 'true';
   const pricingSettings = resolveStorePricingSettings(settings);
   const freeShipThreshold = pricingSettings.freeShipThreshold;
+  const whatsapp = settings.whatsapp?.trim();
   const storeAddress = settings.storeAddress || 'SUH CONCEPT - Imperatriz, MA';
   const storeHours = settings.storeHours || 'Seg-Sab: 9h-19h · Dom: 10h-14h';
   const maxInstallments = pricingSettings.maxInstallments;
@@ -70,19 +74,20 @@ export default function CheckoutPage() {
   const pixTotal = +(pixSubtotal - pixComboDiscount).toFixed(2);
   const pixDiscount = +(cardSubtotal - pixSubtotal).toFixed(2);
   const comboDiscount = resolvedPayMethod === 'pix' ? pixComboDiscount : cardComboDiscount;
-  const freeShippingApplied =
-    deliveryMethod === 'delivery' &&
-    (freeShipPromo || subtotal >= freeShipThreshold || couponFreeShipping);
-  const baseTotal = resolvedPayMethod === 'pix' ? pixTotal - couponDiscount : subtotal - couponDiscount;
-  const deliveryFee = deliveryMethod === 'delivery' && !freeShippingApplied ? IMPERATRIZ_DELIVERY_FEE : 0;
-  const total = +(baseTotal + deliveryFee).toFixed(2);
-  const cashback = Math.max(0, total) * 0.05;
-
   const [form, setForm] = useState({
     nome: '', cpf: '', email: '', tel: '',
     cep: '', rua: '', num: '', comp: '', bairro: '', cidade: '', estado: '',
     card_num: '', card_name: '', card_exp: '', card_cvv: '', parcelas: '1',
   });
+  const itemCount = cart.reduce((a, i) => a + i.quantity, 0);
+  const freeShippingApplied =
+    deliveryMethod === 'delivery' &&
+    (freeShipPromo || subtotal >= freeShipThreshold || couponFreeShipping);
+  const cepDigits = form.cep.replace(/\D/g, '');
+  const shippingAmount = deliveryMethod === 'delivery' && !freeShippingApplied ? shippingQuote?.selected.price ?? 0 : 0;
+  const baseTotal = resolvedPayMethod === 'pix' ? pixTotal - couponDiscount : subtotal - couponDiscount;
+  const total = +(baseTotal + shippingAmount).toFixed(2);
+  const cashback = Math.max(0, total) * 0.05;
 
   useEffect(() => {
     api.settings.get()
@@ -98,6 +103,91 @@ export default function CheckoutPage() {
       });
   }, []);
 
+  useEffect(() => {
+    if (deliveryMethod !== 'delivery') {
+      setShippingQuote(null);
+      setShippingError('');
+      setShippingLoading(false);
+      return;
+    }
+    if (cepDigits.length !== 8) {
+      setShippingQuote(null);
+      setShippingError('');
+      setShippingLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+    setShippingLoading(true);
+    setShippingError('');
+    const timer = window.setTimeout(() => {
+      api.shipping.quote({
+        cepDestino: cepDigits,
+        subtotal,
+        itemCount,
+        serviceCode: shippingQuote?.selected.serviceCode,
+        freeShipping: freeShipPromo || subtotal >= freeShipThreshold || couponFreeShipping,
+        cidade: form.cidade,
+        estado: form.estado,
+      })
+        .then((quote) => {
+          if (cancelled) return;
+          setShippingQuote(quote);
+          setShippingError('');
+        })
+        .catch((error) => {
+          if (cancelled) return;
+          setShippingQuote(null);
+          setShippingError(error instanceof Error ? error.message : 'Não foi possível calcular o frete.');
+        })
+        .finally(() => {
+          if (!cancelled) setShippingLoading(false);
+        });
+    }, 450);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [cepDigits, deliveryMethod, subtotal, itemCount, freeShipPromo, freeShipThreshold, couponFreeShipping, form.cidade, form.estado]);
+
+  useEffect(() => {
+    if (deliveryMethod !== 'delivery' || cepDigits.length !== 8) return;
+
+    let cancelled = false;
+    setCepLookupLoading(true);
+    const timer = window.setTimeout(() => {
+      api.shipping.lookupCep(cepDigits)
+        .then((address) => {
+          if (cancelled) return;
+          setForm((current) => ({
+            ...current,
+            cep: current.cep || address.cep,
+            rua: current.rua || address.logradouro,
+            bairro: current.bairro || address.bairro,
+            cidade: address.cidade,
+            estado: address.estado,
+          }));
+        })
+        .catch((error) => {
+          if (cancelled) return;
+          setShippingQuote(null);
+          setShippingError(error instanceof Error ? error.message : 'CEP inválido. Verifique e tente novamente.');
+        })
+        .finally(() => {
+          if (!cancelled) setCepLookupLoading(false);
+        });
+    }, 250);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [cepDigits, deliveryMethod]);
+
+  useEffect(() => {
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }, [step]);
   const set = (k: keyof typeof form) =>
     (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
       setForm((f) => ({ ...f, [k]: e.target.value }));
@@ -133,6 +223,14 @@ export default function CheckoutPage() {
         const required = [form.cep, form.rua, form.num, form.bairro, form.cidade, form.estado];
         if (required.some((value) => !value.trim())) {
           showToast('Preencha todos os dados de entrega.', 'error');
+          return false;
+        }
+        if (cepDigits.length === 8 && shippingLoading) {
+          showToast('Aguarde o cálculo do frete.', 'error');
+          return false;
+        }
+        if (!freeShippingApplied && !shippingQuote) {
+          showToast(shippingError || 'Calcule o frete pelo CEP antes de continuar.', 'error');
           return false;
         }
       }
@@ -182,6 +280,13 @@ export default function CheckoutPage() {
           bairro: form.bairro,
           cidade: form.cidade,
           estado: form.estado,
+        } : undefined,
+        shippingQuote: deliveryMethod === 'delivery' && shippingQuote ? {
+          serviceCode: shippingQuote.selected.serviceCode,
+          serviceName: shippingQuote.selected.serviceName,
+          price: shippingQuote.selected.price,
+          deadlineDays: shippingQuote.selected.deadlineDays,
+          deadlineText: shippingQuote.selected.deadlineText,
         } : undefined,
         couponCode: couponApplied ? coupon.toUpperCase() : undefined,
         discount: couponDiscount,
@@ -235,10 +340,14 @@ export default function CheckoutPage() {
   );
 
   const deliverySummary = deliveryMethod === 'pickup'
-    ? 'Retirada · Gratis'
+    ? 'Retirada · Grátis'
     : freeShippingApplied
-      ? 'Frete gratis'
-      : `R$ ${deliveryFee.toFixed(2).replace('.', ',')}`;
+      ? 'Frete grátis'
+      : shippingQuote
+        ? `${shippingQuote.selected.serviceName} · R$ ${shippingAmount.toFixed(2).replace('.', ',')}`
+        : shippingLoading
+          ? 'Calculando...'
+          : 'A calcular';
 
   const Stepper = () => (
     <div style={{ padding: '16px 0 28px', maxWidth: 480, margin: '0 auto' }}>
@@ -307,9 +416,11 @@ export default function CheckoutPage() {
 
             <div style={{ gridColumn: 'span 2', display: 'grid', gridTemplateColumns: pickupEnabled && deliveryEnabled ? '1fr 1fr' : '1fr', gap: 12 }} className="checkout-full">
               {deliveryEnabled && (
-                <button onClick={() => setDeliveryMethod('delivery')} style={{ padding: '16px 18px', borderRadius: 12, border: `1.5px solid ${deliveryMethod === 'delivery' ? '#3b82f6' : 'rgba(255,255,255,0.07)'}`, background: deliveryMethod === 'delivery' ? 'rgba(59,130,246,0.08)' : 'rgba(255,255,255,0.02)', textAlign: 'left', cursor: 'pointer', fontFamily: 'inherit' }}>
-                  <p style={{ fontSize: 14, fontWeight: 800, color: '#fff', marginBottom: 4 }}>Entrega</p>
-                  <p style={{ fontSize: 11, color: deliveryMethod === 'delivery' ? '#60a5fa' : '#555' }}>{freeShippingApplied ? 'Frete gratis para este pedido' : 'Taxa fixa de R$ 10,00 em Imperatriz'}</p>
+                <button onClick={() => setDeliveryMethod('delivery')} style={{ padding: '16px 18px', borderRadius: 14, border: `1.5px solid ${deliveryMethod === 'delivery' ? '#32718d' : 'rgba(12,46,42,0.13)'}`, background: deliveryMethod === 'delivery' ? 'rgba(50,113,141,0.1)' : '#fffdf7', textAlign: 'left', cursor: 'pointer', fontFamily: 'inherit', boxShadow: deliveryMethod === 'delivery' ? '0 12px 26px rgba(50,113,141,0.12)' : 'none' }}>
+                  <p style={{ fontSize: 14, fontWeight: 900, color: '#0b2f2b', marginBottom: 4 }}>Entrega</p>
+                  <p style={{ fontSize: 11, color: deliveryMethod === 'delivery' ? '#32718d' : '#596760', fontWeight: deliveryMethod === 'delivery' ? 800 : 500 }}>
+                    {freeShippingApplied ? 'Frete grátis para este pedido' : shippingQuote ? `${shippingQuote.selected.serviceName} · R$ ${shippingAmount.toFixed(2).replace('.', ',')}` : 'Informe o CEP para entrega'}
+                  </p>
                 </button>
               )}
               {pickupEnabled && (
@@ -351,12 +462,22 @@ export default function CheckoutPage() {
                   <input style={inp} value={form.cidade} onChange={set('cidade')} placeholder="Imperatriz" onFocus={focusIn} onBlur={focusOut} />
                 </div>
                 <div style={{ gridColumn: 'span 2' }} className="checkout-full">
-                  <div style={{ padding: '12px 14px', borderRadius: 12, background: 'rgba(59,130,246,0.06)', border: '1px solid rgba(59,130,246,0.15)' }}>
-                    <p style={{ fontSize: 12, color: '#60a5fa', lineHeight: 1.6 }}>
-                      {freeShippingApplied
-                        ? 'Frete gratis aplicado neste pedido.'
-                        : 'Entrega com taxa fixa de R$ 10,00 para toda Imperatriz.'}
-                    </p>
+                  <div style={{ padding: '14px 16px', borderRadius: 14, background: shippingError ? 'rgba(184,132,44,0.1)' : 'rgba(50,113,141,0.08)', border: `1px solid ${shippingError ? 'rgba(184,132,44,0.22)' : 'rgba(50,113,141,0.16)'}`, display: 'flex', alignItems: 'flex-start', gap: 10 }}>
+                    {shippingLoading || cepLookupLoading ? <Loader2 size={16} style={{ color: '#32718d', flexShrink: 0, marginTop: 1, animation: 'spin 1s linear infinite' }} /> : <MapPin size={16} style={{ color: shippingError ? '#9b6d22' : '#32718d', flexShrink: 0, marginTop: 1 }} />}
+                    <div>
+                      <p style={{ fontSize: 12, color: '#0b2f2b', fontWeight: 900, marginBottom: 3 }}>
+                        {freeShippingApplied ? 'Frete grátis aplicado' : shippingQuote ? `${shippingQuote.selected.serviceName} calculado` : shippingLoading || cepLookupLoading ? 'Calculando frete' : 'Cálculo obrigatório de frete'}
+                      </p>
+                      <p style={{ fontSize: 12, color: shippingError ? '#6d5425' : '#32718d', lineHeight: 1.6 }}>
+                        {freeShippingApplied
+                          ? 'Este pedido atingiu uma regra de frete grátis. O valor da entrega fica zerado no pagamento.'
+                          : shippingQuote
+                            ? `Valor: R$ ${shippingAmount.toFixed(2).replace('.', ',')}${shippingQuote.selected.deadlineText ? ` · Prazo estimado: ${shippingQuote.selected.deadlineText}` : ''}. Esse frete já entra no total.`
+                            : shippingError
+                              ? `${shippingError}${whatsapp ? ` Se precisar, finalize com retirada ou fale conosco no WhatsApp ${whatsapp}.` : ''}`
+                              : 'Digite o CEP. Se for Imperatriz/MA, aplicamos automaticamente Entrega local - Imperatriz: R$ 10,00. Para outras cidades, calculamos pelos Correios antes do pagamento.'}
+                      </p>
+                    </div>
                   </div>
                 </div>
               </>
@@ -447,8 +568,8 @@ export default function CheckoutPage() {
             <div style={{ padding: '14px 16px', borderRadius: 12, background: deliveryMethod === 'pickup' ? 'rgba(34,197,94,0.05)' : 'rgba(59,130,246,0.05)', border: `1px solid ${deliveryMethod === 'pickup' ? 'rgba(34,197,94,0.15)' : 'rgba(59,130,246,0.15)'}`, display: 'flex', alignItems: 'flex-start', gap: 12 }}>
               {deliveryMethod === 'pickup' ? <Store size={16} style={{ color: '#22C55E', flexShrink: 0, marginTop: 2 }} /> : <MapPin size={16} style={{ color: '#60a5fa', flexShrink: 0, marginTop: 2 }} />}
               <div>
-                <p style={{ fontSize: 12, fontWeight: 800, color: '#fff', marginBottom: 3 }}>
-                  {deliveryMethod === 'pickup' ? 'Retirada na loja · Gratuita' : freeShippingApplied ? 'Entrega com frete gratis' : 'Entrega com taxa fixa de R$ 10,00'}
+                <p style={{ fontSize: 12, fontWeight: 900, color: '#0b2f2b', marginBottom: 3 }}>
+                  {deliveryMethod === 'pickup' ? 'Retirada na loja · Gratuita' : freeShippingApplied ? 'Entrega com frete grátis' : shippingQuote ? `Entrega · ${shippingQuote.selected.serviceName}` : 'Entrega com frete pelo CEP'}
                 </p>
                 {deliveryMethod === 'pickup' ? (
                   <>
@@ -462,8 +583,8 @@ export default function CheckoutPage() {
                     </div>
                   </>
                 ) : (
-                  <span style={{ fontSize: 11, color: '#888' }}>
-                    {freeShippingApplied ? 'Sua entrega entrou em promoção de frete grátis.' : 'A taxa de entrega em Imperatriz é fixa: R$ 10,00.'}
+                  <span style={{ fontSize: 11, color: '#596760' }}>
+                    {freeShippingApplied ? 'Sua entrega entrou em promoção de frete grátis.' : shippingQuote ? `R$ ${shippingAmount.toFixed(2).replace('.', ',')}${shippingQuote.selected.deadlineText ? ` · ${shippingQuote.selected.deadlineText}` : ''}. Valor incluído no total.` : 'Informe um CEP válido para calcular automaticamente.'}
                   </span>
                 )}
               </div>
@@ -508,9 +629,9 @@ export default function CheckoutPage() {
                     </span>
                   </div>
                 )}
-                {!freeShippingApplied && deliveryMethod === 'delivery' && (
-                  <p style={{ fontSize: 11, color: '#666', lineHeight: 1.5 }}>
-                    A taxa fixa de entrega em Imperatriz já foi adicionada ao total do pedido.
+                {!freeShippingApplied && deliveryMethod === 'delivery' && !shippingQuote && (
+                  <p style={{ fontSize: 11, color: '#596760', lineHeight: 1.5 }}>
+                    Informe um CEP válido para calcular o frete automaticamente antes do pagamento.
                   </p>
                 )}
                 <div style={{ height: 1, background: 'rgba(255,255,255,0.05)' }} />
@@ -589,9 +710,15 @@ export default function CheckoutPage() {
           <span>Entrega</span>
           <span style={{ color: freeShippingApplied || deliveryMethod === 'pickup' ? '#22C55E' : '#60a5fa', fontWeight: 700 }}>{deliverySummary}</span>
         </div>
-        {deliveryMethod === 'delivery' && !freeShippingApplied && (
-          <p style={{ fontSize: 11, color: '#666', lineHeight: 1.5 }}>
-            A taxa fixa de entrega em Imperatriz já está incluída nesse total.
+        {shippingQuote && deliveryMethod === 'delivery' && !freeShippingApplied && (
+          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: '#596760' }}>
+            <span>{shippingQuote.selected.serviceName}</span>
+            <span>{shippingQuote.selected.deadlineText || 'Prazo estimado'}</span>
+          </div>
+        )}
+        {deliveryMethod === 'delivery' && !freeShippingApplied && !shippingQuote && (
+          <p style={{ fontSize: 11, color: '#596760', lineHeight: 1.5 }}>
+            Digite o CEP para calcular o frete automaticamente antes de pagar.
           </p>
         )}
         <div style={{ height: 1, background: 'rgba(255,255,255,0.06)' }} />

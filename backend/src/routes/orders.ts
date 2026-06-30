@@ -1,18 +1,17 @@
 import { Router } from 'express';
 import { prisma } from '../lib/prisma';
 import { createPagBankCheckout, getPagBankConfig } from '../lib/pagbank';
+import { quoteShipping } from '../lib/shipping';
 import { getProductPricing, getStorePricingSettings } from '../lib/storePricing';
 import { getStoreSettingsMap, parseBool, parseNumber } from '../lib/storeSettings';
 
 const router = Router();
 
 const REQUIRED_DELIVERY_FIELDS = ['cep', 'rua', 'num', 'bairro', 'cidade', 'estado'] as const;
-const IMPERATRIZ_DELIVERY_FEE = 10;
 const normalizeEmail = (value: unknown) => String(value ?? '').trim().toLowerCase();
 const normalizeCpf = (value: unknown) => String(value ?? '').replace(/\D/g, '').trim();
 const normalizePhone = (value: unknown) => String(value ?? '').replace(/\D/g, '').trim();
 
-// POST /api/orders — create order from checkout
 router.post('/', async (req, res) => {
   try {
     const {
@@ -27,6 +26,7 @@ router.post('/', async (req, res) => {
       couponCode,
       discount,
       installments,
+      shippingQuote,
     } = req.body;
 
     if (!customerName || !customerEmail || !items?.length || !paymentMethod) {
@@ -41,12 +41,14 @@ router.post('/', async (req, res) => {
     const normalizedAddress = address && typeof address === 'object' ? address : null;
     const paymentMethodText = String(paymentMethod).trim();
     const isPixPayment = paymentMethodText.toLowerCase().includes('pix');
+    const isCardPayment = paymentMethodText.toLowerCase().includes('cart');
 
     const [settings, pricingSettings, pagBankConfig] = await Promise.all([
       getStoreSettingsMap(prisma),
       getStorePricingSettings(prisma),
       getPagBankConfig(prisma),
     ]);
+
     const deliveryEnabled = settings.deliveryEnabled !== undefined ? parseBool(settings.deliveryEnabled) : true;
     const pickupEnabled = settings.pickupEnabled !== undefined ? parseBool(settings.pickupEnabled) : true;
     const freeShipPromo = parseBool(settings.freeShipPromo);
@@ -56,7 +58,6 @@ router.post('/', async (req, res) => {
       ? `Valor do frete informado manualmente no WhatsApp ${whatsapp}`
       : 'Valor do frete informado manualmente pelo WhatsApp após o pedido';
     const requestedInstallments = Math.max(1, Math.trunc(Number(installments) || 1));
-    const isCardPayment = paymentMethodText.toLowerCase().includes('cart');
 
     if ((isPixPayment || isCardPayment) && !normalizedCustomerCpf) {
       return res.status(400).json({ error: 'Informe um CPF válido para pagamentos online' });
@@ -80,11 +81,11 @@ router.post('/', async (req, res) => {
       }
     }
 
-    const productIds = items.map((i: { productId: string }) => i.productId);
+    const productIds = items.map((item: { productId: string }) => item.productId);
     const products = await prisma.product.findMany({ where: { id: { in: productIds } } });
 
     for (const item of items) {
-      const prod = products.find((p) => p.id === item.productId);
+      const prod = products.find((product) => product.id === item.productId);
       if (!prod) return res.status(400).json({ error: `Produto ${item.productId} não encontrado` });
       if (!prod.active) {
         return res.status(400).json({ error: `${prod.name} está desativado e não pode ser vendido no momento` });
@@ -95,17 +96,16 @@ router.post('/', async (req, res) => {
     }
 
     const baseSubtotal = items.reduce((acc: number, item: { productId: string; quantity: number }) => {
-      const prod = products.find((p) => p.id === item.productId)!;
+      const prod = products.find((product) => product.id === item.productId)!;
       const pricing = getProductPricing(prod, pricingSettings, item.quantity, isPixPayment ? 'pix' : 'card');
       return acc + pricing.baseTotalPrice;
     }, 0);
-
+    const itemCount = items.reduce((acc: number, item: { quantity: number }) => acc + Math.max(0, Number(item.quantity) || 0), 0);
     const productOfferDiscount = items.reduce((acc: number, item: { productId: string; quantity: number }) => {
-      const prod = products.find((p) => p.id === item.productId)!;
+      const prod = products.find((product) => product.id === item.productId)!;
       const pricing = getProductPricing(prod, pricingSettings, item.quantity, isPixPayment ? 'pix' : 'card');
       return acc + pricing.comboSavings;
     }, 0);
-
     const subtotal = +(baseSubtotal - productOfferDiscount).toFixed(2);
 
     let appliedCouponCode: string | null = null;
@@ -147,16 +147,42 @@ router.post('/', async (req, res) => {
     const freeShippingApplied =
       selectedDeliveryMethod === 'delivery' &&
       (freeShipPromo || subtotal >= freeShipThreshold || couponFreeShipping);
-    const shippingAmount =
-      selectedDeliveryMethod === 'delivery' && !freeShippingApplied
-        ? IMPERATRIZ_DELIVERY_FEE
-        : 0;
+
+    let calculatedShippingQuote: Awaited<ReturnType<typeof quoteShipping>> | null = null;
+    let shippingAmount = 0;
+    let shippingFailureMessage = '';
+
+    if (selectedDeliveryMethod === 'delivery' && normalizedAddress?.cep) {
+      try {
+        calculatedShippingQuote = await quoteShipping(prisma, {
+          cepDestino: normalizedAddress.cep,
+          subtotal,
+          itemCount,
+          serviceCode: shippingQuote?.serviceCode,
+          freeShipping: freeShippingApplied,
+          cidade: normalizedAddress.cidade,
+          estado: normalizedAddress.estado,
+        });
+        shippingAmount = calculatedShippingQuote.selected.price;
+      } catch (error) {
+        calculatedShippingQuote = null;
+        shippingFailureMessage = error instanceof Error ? error.message : '';
+      }
+    }
+
+    if (selectedDeliveryMethod === 'delivery' && !freeShippingApplied && !calculatedShippingQuote) {
+      return res.status(400).json({
+        error: shippingFailureMessage || 'Informe um CEP válido e calcule o frete antes de continuar.',
+      });
+    }
 
     const shippingMessage = selectedDeliveryMethod === 'pickup'
       ? 'Retirada na loja'
-      : freeShippingApplied
+      : freeShippingApplied || calculatedShippingQuote?.freeShippingApplied
         ? 'Frete grátis aplicado'
-        : `Taxa fixa de entrega em Imperatriz: R$ ${shippingAmount.toFixed(2).replace('.', ',')}`;
+        : calculatedShippingQuote
+          ? `${calculatedShippingQuote.selected.serviceName}: R$ ${calculatedShippingQuote.selected.price.toFixed(2).replace('.', ',')}${calculatedShippingQuote.selected.deadlineText ? ` · ${calculatedShippingQuote.selected.deadlineText}` : ''}`
+          : manualShippingMessage;
 
     const total = +Math.max(0, subtotal - discountAmount + shippingAmount).toFixed(2);
     const cashback = +(total * 0.05).toFixed(2);
@@ -220,11 +246,26 @@ router.post('/', async (req, res) => {
             freeShippingApplied,
             shippingAmount,
             shippingMessage,
+            shippingQuote: calculatedShippingQuote ? {
+              provider: calculatedShippingQuote.provider,
+              serviceCode: calculatedShippingQuote.selected.serviceCode,
+              serviceName: calculatedShippingQuote.selected.serviceName,
+              price: calculatedShippingQuote.selected.price,
+              originalPrice: calculatedShippingQuote.selected.originalPrice,
+              deadlineDays: calculatedShippingQuote.selected.deadlineDays,
+              deadlineText: calculatedShippingQuote.selected.deadlineText,
+              cepOrigem: calculatedShippingQuote.originCep,
+              cepDestino: calculatedShippingQuote.destinationCep,
+              destinationCity: calculatedShippingQuote.destinationCity,
+              destinationState: calculatedShippingQuote.destinationState,
+            } : null,
             payment: {
               provider: pagBankConfig ? 'pagbank' : 'manual',
               method: isPixPayment ? 'PIX' : isCardPayment ? 'CREDIT_CARD' : paymentMethodText,
               installments: requestedInstallments,
-              checkoutEligible: pagBankConfig ? true : false,
+              checkoutEligible: pagBankConfig
+                ? (selectedDeliveryMethod === 'pickup' || freeShippingApplied || calculatedShippingQuote !== null)
+                : false,
             },
           },
           couponCode: appliedCouponCode,
@@ -232,7 +273,7 @@ router.post('/', async (req, res) => {
           status: isPixPayment || isCardPayment ? 'aguardando_pagamento' : 'pendente',
           items: {
             create: items.map((item: { productId: string; productName: string; quantity: number; size: string; color: string }) => {
-              const prod = products.find((p) => p.id === item.productId)!;
+              const prod = products.find((product) => product.id === item.productId)!;
               const productPricing = getProductPricing(prod, pricingSettings);
               const unitPrice = isPixPayment ? productPricing.pixPrice : prod.price;
               return {
@@ -267,7 +308,7 @@ router.post('/', async (req, res) => {
       shouldCreateCheckout = Boolean(
         pagBankConfig &&
         (isPixPayment || isCardPayment) &&
-        (selectedDeliveryMethod === 'pickup' || selectedDeliveryMethod === 'delivery'),
+        (selectedDeliveryMethod === 'pickup' || freeShippingApplied || calculatedShippingQuote !== null),
       );
 
       return createdOrder;
@@ -306,14 +347,14 @@ router.post('/', async (req, res) => {
         where: { id: order.id },
         data: {
           status: 'pendente',
-          notes: `${shippingMessage} | Pagamento online liberado após confirmação manual do frete.`,
+          notes: `${shippingMessage} | Pagamento online liberado após confirmação do frete.`,
         },
         include: { items: true },
       });
       payment = {
         provider: 'manual',
         reason: selectedDeliveryMethod === 'delivery' && !freeShippingApplied
-          ? 'Pagamento online liberado após a confirmação manual do frete pela loja.'
+          ? 'Pagamento online liberado após calcular o frete automático ou confirmar o frete com a loja.'
           : 'Pagamento online indisponível para este pedido.',
       };
     }
@@ -329,7 +370,7 @@ router.post('/', async (req, res) => {
           discountAmount: totalDiscount,
           paymentMethod: isPixPayment ? 'PIX' : 'CREDIT_CARD',
           items: items.map((item: { productId: string; productName: string; quantity: number }) => {
-            const prod = products.find((p) => p.id === item.productId)!;
+            const prod = products.find((product) => product.id === item.productId)!;
             const unitPrice = isPixPayment ? getProductPricing(prod, pricingSettings).pixPrice : prod.price;
             return {
               referenceId: item.productId,
@@ -402,16 +443,16 @@ router.post('/', async (req, res) => {
         method: selectedDeliveryMethod,
         freeShippingApplied,
         amount: shippingAmount,
+        quote: calculatedShippingQuote,
         message: shippingMessage,
       },
     });
-  } catch (e) {
-    console.error(e);
+  } catch (error) {
+    console.error(error);
     res.status(500).json({ error: 'Erro ao criar pedido' });
   }
 });
 
-// GET /api/orders/:id
 router.get('/:id', async (req, res) => {
   try {
     const order = await prisma.order.findUnique({

@@ -2,7 +2,7 @@ import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard, ShoppingBag, Users, Package, BarChart3,
-  Settings, Tag, ChevronLeft, Store, CreditCard, Megaphone
+  Settings, Tag, ChevronLeft, Store, CreditCard, Megaphone, Truck
 } from 'lucide-react';
 import { useStore } from '../../store/useStore';
 
@@ -10,6 +10,7 @@ const nav = [
   { id: 'overview',   label: 'Visão Geral',   icon: LayoutDashboard, section: '' },
   { id: 'orders',     label: 'Pedidos',        icon: ShoppingBag,     section: '' },
   { id: 'products',   label: 'Produtos',       icon: Package,         section: '' },
+  { id: 'shipping',   label: 'Simular Frete',  icon: Truck,           section: '' },
   { id: 'customers',  label: 'Clientes (CRM)', icon: Users,           section: '' },
   { id: 'finance',    label: 'Financeiro',     icon: BarChart3,       section: '' },
   { id: 'payments',   label: 'Pagamentos',     icon: CreditCard,      section: 'Financeiro' },
@@ -19,17 +20,20 @@ const nav = [
 ];
 
 const groups = [
-  { label: '', ids: ['overview', 'orders', 'products', 'customers'] },
+  { label: '', ids: ['overview', 'orders', 'products', 'shipping', 'customers'] },
   { label: 'Financeiro', ids: ['finance', 'payments'] },
   { label: 'Marketing',  ids: ['marketing', 'coupons'] },
   { label: 'Loja',       ids: ['settings'] },
 ];
 
-interface Props { collapsed: boolean; onToggle: () => void; }
+interface Props { collapsed: boolean; onToggle: () => void; role: string; }
 
-export default function Sidebar({ collapsed, onToggle }: Props) {
+export default function Sidebar({ collapsed, onToggle, role }: Props) {
   const navigate = useNavigate();
   const { dashboardSection, setDashboardSection, setCurrentView } = useStore();
+  const visibleIds = role === 'staff'
+    ? new Set(['overview', 'orders', 'products', 'shipping'])
+    : new Set(nav.map((item) => item.id));
 
   return (
     <motion.aside
@@ -63,7 +67,11 @@ export default function Sidebar({ collapsed, onToggle }: Props) {
 
       {/* ── Nav ── */}
       <nav style={{ flex: 1, overflowY: 'auto', padding: '8px 10px', display: 'flex', flexDirection: 'column', gap: 0 }}>
-        {groups.map(({ label, ids }) => (
+        {groups.map(({ label, ids }) => {
+          const filteredIds = ids.filter((id) => visibleIds.has(id));
+          if (!filteredIds.length) return null;
+
+          return (
           <div key={ids[0]} style={{ marginBottom: 4 }}>
             {/* Group label */}
             {label && !collapsed && (
@@ -73,7 +81,7 @@ export default function Sidebar({ collapsed, onToggle }: Props) {
               <div style={{ height: 1, background: 'rgba(255,255,255,0.04)', marginBottom: 4 }} />
             )}
 
-            {ids.map(id => {
+            {filteredIds.map(id => {
               const item = nav.find(n => n.id === id)!;
               const Icon = item.icon;
               const isActive = dashboardSection === id;
@@ -108,7 +116,7 @@ export default function Sidebar({ collapsed, onToggle }: Props) {
               );
             })}
           </div>
-        ))}
+        )})}
       </nav>
 
       {/* ── Footer ── */}

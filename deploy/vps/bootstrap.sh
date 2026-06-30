@@ -4,7 +4,7 @@ set -euo pipefail
 APP_ROOT="/var/www/suhconcept"
 APP_DIR="$APP_ROOT/app"
 REPO_URL="https://github.com/calebesaraiva/suhconcept.git"
-SITE_NAME="suhconcept.com"
+SITE_NAME="${SITE_NAME:-suhconcept.com}"
 
 mkdir -p "$APP_ROOT"
 

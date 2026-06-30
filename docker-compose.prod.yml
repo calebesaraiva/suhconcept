@@ -1,3 +1,4 @@
+name: suhconcept
 services:
   postgres:
     image: postgres:16-alpine
@@ -24,8 +25,8 @@ services:
       postgres:
         condition: service_healthy
     environment:
-      DATABASE_URL: postgresql://suh:suh2026@postgres:5432/suhdb
-      JWT_SECRET: suh-concept-jwt-secret-2026-ultra-secure
+      DATABASE_URL: ${DATABASE_URL:-postgresql://suh:suh2026@postgres:5432/suhdb}
+      JWT_SECRET: ${JWT_SECRET:-suh-concept-jwt-secret-2026-ultra-secure}
       PORT: 3333
       FRONTEND_URL: ${FRONTEND_URL:-https://suhconcept.com,https://www.suhconcept.com}
       PUBLIC_SITE_URL: ${PUBLIC_SITE_URL:-https://suhconcept.com}

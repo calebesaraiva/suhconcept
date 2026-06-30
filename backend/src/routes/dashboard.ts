@@ -1,8 +1,9 @@
 import { Router } from 'express';
-import { requireAuth, requireAdmin } from '../middleware/auth';
+import { requireAuth, requireAdmin, requireRole } from '../middleware/auth';
 import { prisma } from '../lib/prisma';
 import { getStoreSettingsMap } from '../lib/storeSettings';
 import { sendOrderOutForDeliveryEmail } from '../lib/mailer';
+import { quoteShipping } from '../lib/shipping';
 
 const router = Router();
 const PROTECTED_SETTINGS = new Set(['storeCode', 'storeName', 'paymentGateway']);
@@ -12,12 +13,27 @@ const isPerfumariaCategory = (value: unknown) =>
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
     .includes('perfumaria');
+const normalizePaymentMethod = (value: unknown) =>
+  String(value || '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
+const singleQueryValue = (value: unknown) => Array.isArray(value) ? value[0] : value;
+const resolvePaymentMethodColor = (method: string) => {
+  const normalizedMethod = normalizePaymentMethod(method);
 
-// Todas as rotas do painel exigem autenticação E perfil admin
-router.use(requireAuth, requireAdmin);
+  if (normalizedMethod.includes('pix')) return '#22C55E';
+  if (normalizedMethod.includes('cartao') || normalizedMethod.includes('credito')) return '#d8a84a';
+  if (normalizedMethod.includes('debito')) return '#b8842c';
+
+  return '#555';
+};
+
+// Todas as rotas do painel exigem autenticação; permissões específicas são aplicadas por rota.
+router.use(requireAuth);
 
 // GET /api/dashboard/overview
-router.get('/overview', async (_req, res) => {
+router.get('/overview', requireRole('admin', 'staff'), async (_req, res) => {
   try {
     const [totalOrders, totalRevenue, totalCustomers, totalProducts, recentOrders, topProducts] = await Promise.all([
       prisma.order.count(),
@@ -96,18 +112,20 @@ router.get('/overview', async (_req, res) => {
 });
 
 // GET /api/dashboard/orders
-router.get('/orders', async (req, res) => {
+router.get('/orders', requireRole('admin', 'staff'), async (req, res) => {
   try {
-    const { status, search, page } = req.query;
+    const status = singleQueryValue(req.query.status);
+    const search = singleQueryValue(req.query.search);
+    const page = singleQueryValue(req.query.page);
     const take = 20;
-    const skip = (parseInt(page as string) - 1 || 0) * take;
+    const skip = (parseInt(String(page || '1'), 10) - 1 || 0) * take;
     const where: Record<string, unknown> = {};
     if (status) where.status = status;
     if (search) {
       where.OR = [
-        { customerName: { contains: search as string, mode: 'insensitive' } },
-        { customerEmail: { contains: search as string, mode: 'insensitive' } },
-        { id: { contains: search as string, mode: 'insensitive' } },
+        { customerName: { contains: String(search), mode: 'insensitive' } },
+        { customerEmail: { contains: String(search), mode: 'insensitive' } },
+        { id: { contains: String(search), mode: 'insensitive' } },
       ];
     }
     const [orders, total] = await Promise.all([
@@ -121,18 +139,22 @@ router.get('/orders', async (req, res) => {
 });
 
 // PATCH /api/dashboard/orders/:id/status
-router.patch('/orders/:id/status', async (req, res) => {
+router.patch('/orders/:id/status', requireAdmin, async (req, res) => {
   try {
-    const { status } = req.body;
+    const orderId = String(req.params.id);
+    const status = String(req.body?.status || '');
     const validStatuses = ['em_preparo', 'saiu_para_entrega', 'cancelado'];
     if (!validStatuses.includes(status)) return res.status(400).json({ error: 'Status inválido' });
     const existingOrder = await prisma.order.findUnique({
-      where: { id: req.params.id },
+      where: { id: orderId },
       include: { items: true },
     });
     if (!existingOrder) return res.status(404).json({ error: 'Pedido não encontrado' });
 
-    const order = await prisma.order.update({ where: { id: req.params.id }, data: { status }, include: { items: true } });
+    await prisma.order.update({ where: { id: orderId }, data: { status } });
+    const order = await prisma.order.findUnique({ where: { id: orderId } });
+    const orderItems = await prisma.orderItem.findMany({ where: { orderId } });
+    if (!order) return res.status(404).json({ error: 'Pedido não encontrado' });
 
     let notification: { sent: boolean; reason?: string } | null = null;
     if (status === 'saiu_para_entrega') {
@@ -148,7 +170,7 @@ router.patch('/orders/:id/status', async (req, res) => {
           customerName: order.customerName,
           customerEmail: order.customerEmail,
           total: order.total,
-          items: order.items.map((item) => ({
+          items: orderItems.map((item: { productName: string; quantity: number; size: string; color: string }) => ({
             productName: item.productName,
             quantity: item.quantity,
             size: item.size,
@@ -170,14 +192,14 @@ router.patch('/orders/:id/status', async (req, res) => {
 });
 
 // GET /api/dashboard/customers
-router.get('/customers', async (req, res) => {
+router.get('/customers', requireAdmin, async (req, res) => {
   try {
-    const { search } = req.query;
+    const search = singleQueryValue(req.query.search);
     const where: Record<string, unknown> = {};
     if (search) {
       where.OR = [
-        { name: { contains: search as string, mode: 'insensitive' } },
-        { email: { contains: search as string, mode: 'insensitive' } },
+        { name: { contains: String(search), mode: 'insensitive' } },
+        { email: { contains: String(search), mode: 'insensitive' } },
       ];
     }
     const customers = await prisma.customer.findMany({
@@ -198,7 +220,7 @@ router.get('/customers', async (req, res) => {
 });
 
 // GET /api/dashboard/products
-router.get('/products', async (_req, res) => {
+router.get('/products', requireRole('admin', 'staff'), async (_req, res) => {
   try {
     const products = await prisma.product.findMany({ orderBy: { createdAt: 'desc' } });
     res.json(products);
@@ -208,7 +230,7 @@ router.get('/products', async (_req, res) => {
 });
 
 // POST /api/dashboard/products
-router.post('/products', async (req, res) => {
+router.post('/products', requireAdmin, async (req, res) => {
   try {
     const { name, sku, category, categorySlug, price, costPrice, pixPrice, originalPrice, stock, description, image, sizes, tags, colors, collection, isNew, isBestSeller, active } = req.body;
     if (!name || !sku || !category || !price) return res.status(400).json({ error: 'Campos obrigatórios: name, sku, category, price' });
@@ -250,14 +272,15 @@ router.post('/products', async (req, res) => {
 });
 
 // PATCH /api/dashboard/products/:id
-router.patch('/products/:id', async (req, res) => {
+router.patch('/products/:id', requireAdmin, async (req, res) => {
   try {
+    const productId = String(req.params.id);
     const data = req.body;
     if (data.costPrice !== undefined) data.costPrice = data.costPrice ? parseFloat(data.costPrice) : null;
     if (data.price !== undefined) data.price = parseFloat(data.price);
     if (data.stock !== undefined) data.stock = parseInt(data.stock);
     if (isPerfumariaCategory(data.categorySlug || data.category)) data.colors = [];
-    const product = await prisma.product.update({ where: { id: req.params.id }, data });
+    const product = await prisma.product.update({ where: { id: productId }, data });
     res.json(product);
   } catch {
     res.status(500).json({ error: 'Erro interno' });
@@ -265,7 +288,7 @@ router.patch('/products/:id', async (req, res) => {
 });
 
 // GET /api/dashboard/coupons
-router.get('/coupons', async (_req, res) => {
+router.get('/coupons', requireAdmin, async (_req, res) => {
   try {
     const coupons = await prisma.coupon.findMany({ orderBy: { createdAt: 'desc' } });
     res.json(coupons);
@@ -275,7 +298,7 @@ router.get('/coupons', async (_req, res) => {
 });
 
 // POST /api/dashboard/coupons
-router.post('/coupons', async (req, res) => {
+router.post('/coupons', requireAdmin, async (req, res) => {
   try {
     const coupon = await prisma.coupon.create({ data: { ...req.body, code: req.body.code.toUpperCase() } });
     res.status(201).json(coupon);
@@ -285,9 +308,9 @@ router.post('/coupons', async (req, res) => {
 });
 
 // PATCH /api/dashboard/coupons/:id
-router.patch('/coupons/:id', async (req, res) => {
+router.patch('/coupons/:id', requireAdmin, async (req, res) => {
   try {
-    const coupon = await prisma.coupon.update({ where: { id: req.params.id }, data: req.body });
+    const coupon = await prisma.coupon.update({ where: { id: String(req.params.id) }, data: req.body });
     res.json(coupon);
   } catch {
     res.status(500).json({ error: 'Erro interno' });
@@ -295,9 +318,9 @@ router.patch('/coupons/:id', async (req, res) => {
 });
 
 // DELETE /api/dashboard/coupons/:id
-router.delete('/coupons/:id', async (req, res) => {
+router.delete('/coupons/:id', requireAdmin, async (req, res) => {
   try {
-    await prisma.coupon.delete({ where: { id: req.params.id } });
+    await prisma.coupon.delete({ where: { id: String(req.params.id) } });
     res.json({ ok: true });
   } catch {
     res.status(500).json({ error: 'Erro interno' });
@@ -305,9 +328,9 @@ router.delete('/coupons/:id', async (req, res) => {
 });
 
 // GET /api/dashboard/finance?period=mensal|trimestral|anual
-router.get('/finance', async (req, res) => {
+router.get('/finance', requireAdmin, async (req, res) => {
   try {
-    const period = (req.query.period as string) || 'mensal';
+    const period = String(singleQueryValue(req.query.period) || 'mensal');
 
     // Build time buckets
     const buckets: { label: string; start: Date; end: Date }[] = [];
@@ -379,17 +402,12 @@ router.get('/finance', async (req, res) => {
     }
     const grandTotal = Object.values(pmMap).reduce((s, v) => s + v.total, 0) || 1;
 
-    const pmColors: Record<string, string> = {
-      cartao: '#a855f7', credito: '#a855f7', 'cartão': '#a855f7',
-      pix: '#22C55E',
-      debito: '#FF2DA0', 'débito': '#FF2DA0',
-    };
     const paymentMethods = Object.entries(pmMap).map(([method, v]) => ({
       method,
       count: v.count,
       total: v.total,
       pct: Math.round((v.total / grandTotal) * 100),
-      color: pmColors[method.toLowerCase()] || '#555',
+      color: resolvePaymentMethodColor(method),
     })).sort((a, b) => b.total - a.total);
 
     const [totalsAgg, activeCustomers] = await Promise.all([
@@ -430,7 +448,7 @@ router.get('/finance', async (req, res) => {
 });
 
 // GET /api/dashboard/settings
-router.get('/settings', async (_req, res) => {
+router.get('/settings', requireAdmin, async (_req, res) => {
   try {
     const rows = await prisma.setting.findMany();
     const map: Record<string, string> = {};
@@ -440,7 +458,7 @@ router.get('/settings', async (_req, res) => {
 });
 
 // PUT /api/dashboard/settings
-router.put('/settings', async (req, res) => {
+router.put('/settings', requireAdmin, async (req, res) => {
   try {
     const entries = Object.entries(req.body as Record<string, string>).filter(([key]) => !PROTECTED_SETTINGS.has(key));
     await Promise.all(entries.map(([key, value]) =>
@@ -451,7 +469,7 @@ router.put('/settings', async (req, res) => {
 });
 
 // GET /api/dashboard/alerts — real-time bell notifications
-router.get('/alerts', async (_req, res) => {
+router.get('/alerts', requireRole('admin', 'staff'), async (_req, res) => {
   try {
     const [pendingOrders, lowStockProducts] = await Promise.all([
       prisma.order.findMany({
@@ -510,6 +528,53 @@ router.get('/alerts', async (_req, res) => {
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: 'Erro interno' });
+  }
+});
+
+router.post('/shipping/simulate', requireRole('admin', 'staff'), async (req, res) => {
+  try {
+    const cepDestino = String(req.body?.cepDestino || '');
+    const items = Array.isArray(req.body?.items) ? req.body.items : [];
+    if (!items.length) {
+      return res.status(400).json({ error: 'Selecione ao menos um produto para simular o frete' });
+    }
+
+    const ids = items.map((item: { productId: string }) => item.productId).filter(Boolean);
+    const products = await prisma.product.findMany({ where: { id: { in: ids } } });
+    const normalizedItems = (items as Array<{ productId: string; quantity: number }>)
+      .map((item: { productId: string; quantity: number }) => {
+        const product = products.find((entry) => entry.id === item.productId);
+        if (!product) return null;
+        return {
+          id: product.id,
+          name: product.name,
+          quantity: Math.max(1, Math.trunc(Number(item.quantity) || 1)),
+          unitPrice: product.price,
+        };
+      })
+      .filter((item): item is { id: string; name: string; quantity: number; unitPrice: number } => Boolean(item));
+
+    if (!normalizedItems.length) {
+      return res.status(400).json({ error: 'Nenhum produto válido foi informado na simulação' });
+    }
+
+    const subtotal = normalizedItems.reduce((acc: number, item: { quantity: number; unitPrice: number }) => acc + item.unitPrice * item.quantity, 0);
+    const itemCount = normalizedItems.reduce((acc: number, item: { quantity: number }) => acc + item.quantity, 0);
+    const quote = await quoteShipping(prisma, {
+      cepDestino,
+      subtotal,
+      itemCount,
+    });
+
+    res.json({
+      subtotal,
+      itemCount,
+      quote,
+      products: normalizedItems,
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Erro ao simular frete';
+    res.status(400).json({ error: message });
   }
 });
 

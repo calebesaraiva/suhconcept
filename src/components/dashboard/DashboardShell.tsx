@@ -12,6 +12,7 @@ import Products from './Products';
 import Payments from './Payments';
 import Coupons from './Coupons';
 import Settings from './Settings';
+import ShippingSimulator from './ShippingSimulator';
 import Toast from '../ui/Toast';
 import { useStore } from '../../store/useStore';
 
@@ -19,6 +20,7 @@ const sectionMap: Record<string, React.ReactNode> = {
   overview:  <Overview />,
   orders:    <Orders />,
   products:  <Products />,
+  shipping:  <ShippingSimulator />,
   customers: <Customers />,
   finance:   <Finance />,
   payments:  <Payments />,
@@ -58,8 +60,8 @@ function LoginGate({ onLogin }: { onLogin: () => void }) {
     setError('');
     try {
       const { token, user } = await api.auth.login(email, password);
-      if (user.role !== 'admin') {
-        setError('Acesso permitido apenas para administrador');
+      if (!['admin', 'staff'].includes(user.role)) {
+        setError('Acesso permitido apenas para usuários do painel');
         return;
       }
       localStorage.setItem('suh_token', token);
@@ -94,7 +96,7 @@ function LoginGate({ onLogin }: { onLogin: () => void }) {
             <Lock size={22} style={{ color: '#fff' }} />
           </div>
           <h1 style={{ fontSize: 22, fontWeight: 900, color: '#fff', marginBottom: 6 }}>Dashboard SUH CONCEPT</h1>
-          <p style={{ fontSize: 13, color: '#999' }}>Entre com suas credenciais de administrador</p>
+          <p style={{ fontSize: 13, color: '#999' }}>Entre com suas credenciais do painel</p>
         </div>
 
         <form onSubmit={submit} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
@@ -154,7 +156,7 @@ export default function DashboardShell() {
     if (!token) return;
     api.auth.me()
       .then(user => {
-        if (user.role !== 'admin') {
+        if (!['admin', 'staff'].includes(user.role)) {
           localStorage.removeItem('suh_token');
           setAuthed(false);
           setCurrentUser(null);
@@ -220,7 +222,7 @@ export default function DashboardShell() {
 
       {/* ── Sidebar desktop ── */}
       <div className="dash-sidebar-desktop">
-        <Sidebar collapsed={collapsed} onToggle={() => setCollapsed(!collapsed)} />
+        <Sidebar collapsed={collapsed} onToggle={() => setCollapsed(!collapsed)} role={currentUser?.role || 'admin'} />
       </div>
 
       {/* ── Sidebar mobile overlay ── */}
@@ -236,7 +238,7 @@ export default function DashboardShell() {
               initial={{ x: '-100%' }} animate={{ x: 0 }} exit={{ x: '-100%' }}
               transition={{ type: 'tween', duration: 0.28 }}
               style={{ position: 'fixed', left: 0, top: 0, bottom: 0, zIndex: 61 }}>
-              <Sidebar collapsed={false} onToggle={() => setMobileSidebar(false)} />
+              <Sidebar collapsed={false} onToggle={() => setMobileSidebar(false)} role={currentUser?.role || 'admin'} />
             </motion.div>
           </>
         )}

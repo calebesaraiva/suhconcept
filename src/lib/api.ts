@@ -46,7 +46,36 @@ export interface CreateOrderPayload {
   paymentMethod: string; deliveryMethod: string;
   installments?: number;
   address?: Record<string, string>;
+  shippingQuote?: { serviceCode: string; serviceName?: string; price?: number; deadlineDays?: number; deadlineText?: string };
   couponCode?: string; discount?: number;
+}
+
+export interface ShippingQuoteOption {
+  serviceCode: string;
+  serviceName: string;
+  price: number;
+  originalPrice: number;
+  deadlineDays?: number;
+  deadlineText?: string;
+}
+
+export interface ShippingQuoteResponse {
+  provider: 'correios' | 'local';
+  originCep: string;
+  destinationCep: string;
+  destinationCity?: string;
+  destinationState?: string;
+  freeShippingApplied: boolean;
+  options: ShippingQuoteOption[];
+  selected: ShippingQuoteOption;
+}
+
+export interface CepAddressResponse {
+  cep: string;
+  logradouro: string;
+  bairro: string;
+  cidade: string;
+  estado: string;
 }
 
 export interface ApiOrder {
@@ -63,6 +92,7 @@ export interface OrderShippingInfo {
   method: string;
   freeShippingApplied: boolean;
   amount?: number;
+  quote?: ShippingQuoteResponse | null;
   message: string;
 }
 
@@ -174,6 +204,16 @@ export const api = {
     get: () => request<Record<string, string>>('/settings'),
   },
 
+  shipping: {
+    quote: (data: { cepDestino: string; subtotal: number; itemCount?: number; serviceCode?: string; freeShipping?: boolean; cidade?: string; estado?: string }) =>
+      request<ShippingQuoteResponse>('/shipping/quote', {
+        method: 'POST',
+        body: JSON.stringify(data),
+      }),
+    lookupCep: (cep: string) =>
+      request<CepAddressResponse>(`/shipping/address/${encodeURIComponent(cep)}`),
+  },
+
   dashboard: {
     overview: () => request<DashboardOverview>('/dashboard/overview'),
     alerts: () => request<DashboardAlerts>('/dashboard/alerts'),
@@ -210,5 +250,15 @@ export const api = {
       request<{ ok: boolean }>(`/dashboard/coupons/${id}`, { method: 'DELETE' }),
     finance: (period: 'mensal' | 'trimestral' | 'anual') =>
       request<DashboardFinance>(`/dashboard/finance?period=${period}`),
+    simulateShipping: (data: { cepDestino: string; items: { productId: string; quantity: number }[] }) =>
+      request<{
+        subtotal: number;
+        itemCount: number;
+        quote: ShippingQuoteResponse;
+        products: { id: string; name: string; quantity: number; unitPrice: number }[];
+      }>('/dashboard/shipping/simulate', {
+        method: 'POST',
+        body: JSON.stringify(data),
+      }),
   },
 };
