@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import type { CSSProperties, FormEvent } from 'react';
-import { Loader2, LogOut, Mail, Package, ShieldCheck, User } from 'lucide-react';
+import { Loader2, LogOut, Package, ShieldCheck, User } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import {
   api,
@@ -49,6 +49,21 @@ const socialButtonStyle: CSSProperties = {
   justifyContent: 'center',
   gap: 10,
   cursor: 'pointer',
+};
+
+const googleBadgeStyle: CSSProperties = {
+  width: 18,
+  height: 18,
+  borderRadius: '50%',
+  background: '#fff',
+  display: 'inline-flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  fontSize: 12,
+  fontWeight: 900,
+  color: '#4285F4',
+  boxShadow: '0 4px 10px rgba(0,0,0,0.16)',
+  flexShrink: 0,
 };
 
 function getOrderStatusLabel(status: string) {
@@ -345,7 +360,7 @@ export default function AccountPanel({ compact = false, onAuthSuccess, redirectT
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 18 }}>
               <button type="button" onClick={() => handleSocialClick('google')} style={socialButtonStyle}>
-                <Mail size={16} />
+                <span style={googleBadgeStyle}>G</span>
                 Entrar com Google
               </button>
               <p style={{ fontSize: 11, color: '#7d7d84', lineHeight: 1.5, textAlign: 'left' }}>
