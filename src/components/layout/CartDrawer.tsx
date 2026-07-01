@@ -35,6 +35,15 @@ export default function CartDrawer({ open, onClose }: Props) {
   const [shippingError, setShippingError] = useState('');
 
   useEffect(() => {
+    if (!open) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [open]);
+
+  useEffect(() => {
     const digits = cep.replace(/\D/g, '');
     if (!open || digits.length !== 8 || cart.length === 0) {
       setShippingQuote(null);
@@ -115,8 +124,10 @@ export default function CartDrawer({ open, onClose }: Props) {
               width: '100%', maxWidth: 440,
               background: '#0f0f0f',
               borderLeft: '1px solid rgba(255,255,255,0.07)',
-              display: 'grid',
-              gridTemplateRows: 'auto auto minmax(0, 1fr) auto',
+              display: 'flex',
+              flexDirection: 'column',
+              overflowY: 'auto',
+              overscrollBehavior: 'contain',
               boxShadow: '-24px 0 80px rgba(0,0,0,0.7)',
             }}>
 
@@ -161,7 +172,7 @@ export default function CartDrawer({ open, onClose }: Props) {
             </div>
 
             {/* ── Items ── */}
-            <div className="cart-drawer-content" style={{ minHeight: 0, overflowY: 'auto', padding: '16px 22px', display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <div className="cart-drawer-content" style={{ padding: '16px 22px', display: 'flex', flexDirection: 'column', gap: 12, flexShrink: 0 }}>
               {cart.length === 0 ? (
                 /* Empty state */
                 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', textAlign: 'center', gap: 0 }}>
@@ -267,13 +278,14 @@ export default function CartDrawer({ open, onClose }: Props) {
                     <input
                       placeholder="Cupom de desconto"
                       disabled
+                      className="cart-coupon-input"
                       style={{ width: '100%', background: '#141414', border: '1px solid rgba(255,255,255,0.09)', borderRadius: 8, padding: '10px 12px 10px 34px', color: '#fff', fontSize: 13, fontFamily: 'inherit', outline: 'none' }}
                       onFocus={e => (e.currentTarget.style.borderColor = 'rgba(255,255,255,0.2)')}
                       onBlur={e => (e.currentTarget.style.borderColor = 'rgba(255,255,255,0.09)')}
                     />
                   </div>
-                  <div style={{ minWidth: 118, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 14px', borderRadius: 8, border: '1px solid rgba(168,85,247,0.16)', background: 'rgba(168,85,247,0.08)', color: '#d5b7ff', fontSize: 11, fontWeight: 700, textAlign: 'center', lineHeight: 1.3 }}>
-                    Aplicar no checkout
+                  <div className="cart-coupon-helper" style={{ minWidth: 118, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 14px', borderRadius: 8, border: '1px solid rgba(168,85,247,0.16)', background: 'rgba(168,85,247,0.08)', color: '#d5b7ff', fontSize: 11, fontWeight: 700, textAlign: 'center', lineHeight: 1.3 }}>
+                    Aplicado no checkout
                   </div>
                 </div>
 
@@ -383,6 +395,25 @@ export default function CartDrawer({ open, onClose }: Props) {
                   </div>
                 </div>
 
+                <div className="cart-checkout-notes" style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 10 }}>
+                  <div className="cart-checkout-note" style={{ padding: '12px 13px', borderRadius: 12, background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}>
+                    <p style={{ fontSize: 10.5, color: '#8b8b93', fontWeight: 800, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 4 }}>
+                      Pagamento
+                    </p>
+                    <p style={{ fontSize: 12.5, color: '#f3f4f6', fontWeight: 700, lineHeight: 1.45 }}>
+                      Pix ou cartão no checkout oficial
+                    </p>
+                  </div>
+                  <div className="cart-checkout-note" style={{ padding: '12px 13px', borderRadius: 12, background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}>
+                    <p style={{ fontSize: 10.5, color: '#8b8b93', fontWeight: 800, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 4 }}>
+                      Entrega
+                    </p>
+                    <p style={{ fontSize: 12.5, color: '#f3f4f6', fontWeight: 700, lineHeight: 1.45 }}>
+                      Frete entra no total antes de pagar
+                    </p>
+                  </div>
+                </div>
+
                 {/* Cashback banner */}
                 <div className="cart-cashback-banner" style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '11px 14px', borderRadius: 10, background: 'rgba(255,184,0,0.07)', border: '1px solid rgba(255,184,0,0.2)' }}>
                   <div style={{ width: 32, height: 32, borderRadius: 8, background: 'rgba(255,184,0,0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
@@ -399,20 +430,23 @@ export default function CartDrawer({ open, onClose }: Props) {
                 </div>
 
                 {/* CTA */}
-                <Link to="/checkout" onClick={onClose}
-                  className="no-underline"
+                <div className="cart-checkout-cta" style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                  <Link to="/checkout" onClick={onClose}
+                  className="no-underline cart-checkout-button"
                   style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, padding: '15px', borderRadius: 10, background: 'linear-gradient(135deg, #a855f7, #FF2DA0)', color: '#fff', fontWeight: 900, fontSize: 14, letterSpacing: '0.06em', transition: 'opacity 0.2s' }}
                   onMouseEnter={e => (e.currentTarget.style.opacity = '0.9')}
                   onMouseLeave={e => (e.currentTarget.style.opacity = '1')}>
-                  <Lock size={15} /> FINALIZAR COMPRA
-                </Link>
+                    <Lock size={15} /> IR PARA O CHECKOUT
+                  </Link>
 
-                <button onClick={onClose}
-                  style={{ background: 'none', border: 'none', color: '#444', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit', transition: 'color 0.15s' }}
+                  <button onClick={onClose}
+                  className="cart-continue-button"
+                  style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 10, color: '#9a9aa2', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit', transition: 'color 0.15s, border-color 0.15s, background 0.15s', padding: '12px 14px', fontWeight: 700 }}
                   onMouseEnter={e => (e.currentTarget.style.color = '#888')}
                   onMouseLeave={e => (e.currentTarget.style.color = '#444')}>
-                  Continuar comprando
-                </button>
+                    Continuar comprando
+                  </button>
+                </div>
               </div>
             )}
           </motion.div>
