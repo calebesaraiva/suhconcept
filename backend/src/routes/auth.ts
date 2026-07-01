@@ -2,16 +2,17 @@ import { Router } from 'express';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { prisma } from '../lib/prisma';
+import { isStaffRole, normalizeRole } from '../lib/roles';
 
 const router = Router();
 const SECRET = process.env.JWT_SECRET || 'suh-secret-2026';
 
 function signUser(user: { id: string; email: string; role: string }) {
-  return jwt.sign({ id: user.id, email: user.email, role: user.role }, SECRET, { expiresIn: '7d' });
+  return jwt.sign({ id: user.id, email: user.email, role: normalizeRole(user.role) }, SECRET, { expiresIn: '7d' });
 }
 
 function sanitizeUser(user: { id: string; name: string; email: string; role: string }) {
-  return { id: user.id, name: user.name, email: user.email, role: user.role };
+  return { id: user.id, name: user.name, email: user.email, role: normalizeRole(user.role) };
 }
 
 // POST /api/auth/register
@@ -75,6 +76,7 @@ router.post('/login', async (req, res) => {
     const cleanEmail = String(email).trim().toLowerCase();
     const user = await prisma.user.findUnique({ where: { email: cleanEmail } });
     if (!user) return res.status(401).json({ error: 'Credenciais inválidas' });
+    if (!user.active) return res.status(403).json({ error: 'Seu acesso ao painel está desativado no momento' });
 
     const valid = await bcrypt.compare(password, user.password);
     if (!valid) return res.status(401).json({ error: 'Credenciais inválidas' });
@@ -92,9 +94,15 @@ router.get('/me', async (req, res) => {
     const token = req.headers.authorization?.replace('Bearer ', '');
     if (!token) return res.status(401).json({ error: 'Token required' });
     const payload = jwt.verify(token, SECRET) as { id: string };
-    const user = await prisma.user.findUnique({ where: { id: payload.id }, select: { id: true, name: true, email: true, role: true } });
+    const user = await prisma.user.findUnique({
+      where: { id: payload.id },
+      select: { id: true, name: true, email: true, role: true, active: true },
+    });
     if (!user) return res.status(404).json({ error: 'Usuário não encontrado' });
-    res.json(user);
+    if (!user.active && isStaffRole(user.role)) {
+      return res.status(403).json({ error: 'Seu acesso ao painel está desativado no momento' });
+    }
+    res.json({ id: user.id, name: user.name, email: user.email, role: normalizeRole(user.role) });
   } catch {
     res.status(401).json({ error: 'Token inválido' });
   }

@@ -14,7 +14,7 @@ const CATS = [
 ];
 
 export default function CategoriesPage() {
-  const { data } = useProducts();
+  const { data } = useProducts({ limit: '500' });
   const products = data?.products ?? [];
 
   const countFor = (slug: string) => {

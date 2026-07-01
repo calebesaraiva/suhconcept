@@ -2,9 +2,10 @@ import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard, ShoppingBag, Users, Package, BarChart3,
-  Settings, Tag, ChevronLeft, Store, CreditCard, Megaphone, Truck
+  Settings, Tag, ChevronLeft, Store, CreditCard, Megaphone, Truck, ShieldCheck
 } from 'lucide-react';
 import { useStore } from '../../store/useStore';
+import { normalizeDashboardRole } from '../../lib/dashboardRoles';
 
 const nav = [
   { id: 'overview',   label: 'Visão Geral',   icon: LayoutDashboard, section: '' },
@@ -17,13 +18,14 @@ const nav = [
   { id: 'marketing',  label: 'Marketing',      icon: Megaphone,       section: 'Marketing' },
   { id: 'coupons',    label: 'Cupons',         icon: Tag,             section: 'Marketing' },
   { id: 'settings',   label: 'Configurações',  icon: Settings,        section: 'Loja' },
+  { id: 'access',     label: 'Acessos',        icon: ShieldCheck,     section: 'Loja' },
 ];
 
 const groups = [
   { label: '', ids: ['overview', 'orders', 'products', 'shipping', 'customers'] },
   { label: 'Financeiro', ids: ['finance', 'payments'] },
   { label: 'Marketing',  ids: ['marketing', 'coupons'] },
-  { label: 'Loja',       ids: ['settings'] },
+  { label: 'Loja',       ids: ['settings', 'access'] },
 ];
 
 interface Props { collapsed: boolean; onToggle: () => void; role: string; }
@@ -31,9 +33,12 @@ interface Props { collapsed: boolean; onToggle: () => void; role: string; }
 export default function Sidebar({ collapsed, onToggle, role }: Props) {
   const navigate = useNavigate();
   const { dashboardSection, setDashboardSection, setCurrentView } = useStore();
-  const visibleIds = role === 'staff'
-    ? new Set(['overview', 'orders', 'products', 'shipping'])
-    : new Set(nav.map((item) => item.id));
+  const normalizedRole = normalizeDashboardRole(role);
+  const visibleIds = normalizedRole === 'master'
+    ? new Set(nav.map((item) => item.id))
+    : normalizedRole === 'manager'
+      ? new Set(['overview', 'orders', 'products', 'shipping', 'customers'])
+      : new Set(['overview', 'orders', 'shipping']);
 
   return (
     <motion.aside

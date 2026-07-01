@@ -1,9 +1,11 @@
+import bcrypt from 'bcryptjs';
 import { Router } from 'express';
-import { requireAuth, requireAdmin, requireRole } from '../middleware/auth';
+import { AuthRequest, requireAuth, requireAdmin, requireRole } from '../middleware/auth';
 import { prisma } from '../lib/prisma';
 import { getStoreSettingsMap } from '../lib/storeSettings';
 import { sendOrderOutForDeliveryEmail } from '../lib/mailer';
 import { quoteShipping } from '../lib/shipping';
+import { canViewCostData, isSellerRole, normalizeRole, sanitizeStaffRole } from '../lib/roles';
 
 const router = Router();
 const PROTECTED_SETTINGS = new Set(['storeCode', 'storeName', 'paymentGateway']);
@@ -19,6 +21,15 @@ const normalizePaymentMethod = (value: unknown) =>
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '');
 const singleQueryValue = (value: unknown) => Array.isArray(value) ? value[0] : value;
+const sanitizeDashboardUser = (user: { id: string; name: string; email: string; role: string; active: boolean; createdAt: Date; updatedAt: Date }) => ({
+  id: user.id,
+  name: user.name,
+  email: user.email,
+  role: normalizeRole(user.role),
+  active: user.active,
+  createdAt: user.createdAt,
+  updatedAt: user.updatedAt,
+});
 const resolvePaymentMethodColor = (method: string) => {
   const normalizedMethod = normalizePaymentMethod(method);
 
@@ -33,7 +44,7 @@ const resolvePaymentMethodColor = (method: string) => {
 router.use(requireAuth);
 
 // GET /api/dashboard/overview
-router.get('/overview', requireRole('admin', 'staff'), async (_req, res) => {
+router.get('/overview', requireRole('master', 'manager', 'seller'), async (_req, res) => {
   try {
     const [totalOrders, totalRevenue, totalCustomers, totalProducts, recentOrders, topProducts] = await Promise.all([
       prisma.order.count(),
@@ -112,7 +123,7 @@ router.get('/overview', requireRole('admin', 'staff'), async (_req, res) => {
 });
 
 // GET /api/dashboard/orders
-router.get('/orders', requireRole('admin', 'staff'), async (req, res) => {
+router.get('/orders', requireRole('master', 'manager', 'seller'), async (req, res) => {
   try {
     const status = singleQueryValue(req.query.status);
     const search = singleQueryValue(req.query.search);
@@ -139,11 +150,14 @@ router.get('/orders', requireRole('admin', 'staff'), async (req, res) => {
 });
 
 // PATCH /api/dashboard/orders/:id/status
-router.patch('/orders/:id/status', requireAdmin, async (req, res) => {
+router.patch('/orders/:id/status', requireRole('master', 'manager', 'seller'), async (req: AuthRequest, res) => {
   try {
     const orderId = String(req.params.id);
     const status = String(req.body?.status || '');
-    const validStatuses = ['em_preparo', 'saiu_para_entrega', 'cancelado'];
+    const currentRole = normalizeRole(req.user?.role);
+    const validStatuses = isSellerRole(currentRole)
+      ? ['em_preparo', 'saiu_para_entrega']
+      : ['em_preparo', 'saiu_para_entrega', 'cancelado'];
     if (!validStatuses.includes(status)) return res.status(400).json({ error: 'Status inválido' });
     const existingOrder = await prisma.order.findUnique({
       where: { id: orderId },
@@ -192,7 +206,7 @@ router.patch('/orders/:id/status', requireAdmin, async (req, res) => {
 });
 
 // GET /api/dashboard/customers
-router.get('/customers', requireAdmin, async (req, res) => {
+router.get('/customers', requireRole('master', 'manager'), async (req, res) => {
   try {
     const search = singleQueryValue(req.query.search);
     const where: Record<string, unknown> = {};
@@ -220,17 +234,22 @@ router.get('/customers', requireAdmin, async (req, res) => {
 });
 
 // GET /api/dashboard/products
-router.get('/products', requireRole('admin', 'staff'), async (_req, res) => {
+router.get('/products', requireRole('master', 'manager'), async (req: AuthRequest, res) => {
   try {
     const products = await prisma.product.findMany({ orderBy: { createdAt: 'desc' } });
-    res.json(products);
+    const canViewCosts = canViewCostData(req.user?.role);
+    res.json(products.map((product) => (
+      canViewCosts
+        ? product
+        : { ...product, costPrice: null }
+    )));
   } catch {
     res.status(500).json({ error: 'Erro interno' });
   }
 });
 
 // POST /api/dashboard/products
-router.post('/products', requireAdmin, async (req, res) => {
+router.post('/products', requireRole('master', 'manager'), async (req: AuthRequest, res) => {
   try {
     const { name, sku, category, categorySlug, price, costPrice, pixPrice, originalPrice, stock, description, image, sizes, tags, colors, collection, isNew, isBestSeller, active } = req.body;
     if (!name || !sku || !category || !price) return res.status(400).json({ error: 'Campos obrigatórios: name, sku, category, price' });
@@ -242,11 +261,12 @@ router.post('/products', requireAdmin, async (req, res) => {
       .replace(/\s+/g, '-')
       .replace(/[^a-z0-9-]/g, '');
     const normalizedColors = isPerfumariaCategory(normalizedCategorySlug) ? [] : (colors || []);
+    const sanitizedCostPrice = canViewCostData(req.user?.role) && costPrice ? parseFloat(costPrice) : null;
     const product = await prisma.product.create({
       data: {
         name, sku: (sku as string).toUpperCase(), slug,
         category, categorySlug: normalizedCategorySlug,
-        price: parseFloat(price), costPrice: costPrice ? parseFloat(costPrice) : null,
+        price: parseFloat(price), costPrice: sanitizedCostPrice,
         pixPrice: pixPrice ? parseFloat(pixPrice) : parseFloat(price) * 0.95,
         originalPrice: originalPrice ? parseFloat(originalPrice) : null,
         stock: parseInt(stock ?? 0),
@@ -272,16 +292,20 @@ router.post('/products', requireAdmin, async (req, res) => {
 });
 
 // PATCH /api/dashboard/products/:id
-router.patch('/products/:id', requireAdmin, async (req, res) => {
+router.patch('/products/:id', requireRole('master', 'manager'), async (req: AuthRequest, res) => {
   try {
     const productId = String(req.params.id);
-    const data = req.body;
-    if (data.costPrice !== undefined) data.costPrice = data.costPrice ? parseFloat(data.costPrice) : null;
+    const data = { ...req.body };
+    if (!canViewCostData(req.user?.role)) {
+      delete data.costPrice;
+    } else if (data.costPrice !== undefined) {
+      data.costPrice = data.costPrice ? parseFloat(data.costPrice) : null;
+    }
     if (data.price !== undefined) data.price = parseFloat(data.price);
     if (data.stock !== undefined) data.stock = parseInt(data.stock);
     if (isPerfumariaCategory(data.categorySlug || data.category)) data.colors = [];
     const product = await prisma.product.update({ where: { id: productId }, data });
-    res.json(product);
+    res.json(canViewCostData(req.user?.role) ? product : { ...product, costPrice: null });
   } catch {
     res.status(500).json({ error: 'Erro interno' });
   }
@@ -328,7 +352,7 @@ router.delete('/coupons/:id', requireAdmin, async (req, res) => {
 });
 
 // GET /api/dashboard/finance?period=mensal|trimestral|anual
-router.get('/finance', requireAdmin, async (req, res) => {
+router.get('/finance', requireRole('master'), async (req, res) => {
   try {
     const period = String(singleQueryValue(req.query.period) || 'mensal');
 
@@ -448,7 +472,7 @@ router.get('/finance', requireAdmin, async (req, res) => {
 });
 
 // GET /api/dashboard/settings
-router.get('/settings', requireAdmin, async (_req, res) => {
+router.get('/settings', requireRole('master'), async (_req, res) => {
   try {
     const rows = await prisma.setting.findMany();
     const map: Record<string, string> = {};
@@ -458,7 +482,7 @@ router.get('/settings', requireAdmin, async (_req, res) => {
 });
 
 // PUT /api/dashboard/settings
-router.put('/settings', requireAdmin, async (req, res) => {
+router.put('/settings', requireRole('master'), async (req, res) => {
   try {
     const entries = Object.entries(req.body as Record<string, string>).filter(([key]) => !PROTECTED_SETTINGS.has(key));
     await Promise.all(entries.map(([key, value]) =>
@@ -469,7 +493,7 @@ router.put('/settings', requireAdmin, async (req, res) => {
 });
 
 // GET /api/dashboard/alerts — real-time bell notifications
-router.get('/alerts', requireRole('admin', 'staff'), async (_req, res) => {
+router.get('/alerts', requireRole('master', 'manager', 'seller'), async (_req, res) => {
   try {
     const [pendingOrders, lowStockProducts] = await Promise.all([
       prisma.order.findMany({
@@ -531,7 +555,7 @@ router.get('/alerts', requireRole('admin', 'staff'), async (_req, res) => {
   }
 });
 
-router.post('/shipping/simulate', requireRole('admin', 'staff'), async (req, res) => {
+router.post('/shipping/simulate', requireRole('master', 'manager', 'seller'), async (req, res) => {
   try {
     const cepDestino = String(req.body?.cepDestino || '');
     const items = Array.isArray(req.body?.items) ? req.body.items : [];
@@ -575,6 +599,152 @@ router.post('/shipping/simulate', requireRole('admin', 'staff'), async (req, res
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Erro ao simular frete';
     res.status(400).json({ error: message });
+  }
+});
+
+router.get('/users', requireRole('master'), async (_req, res) => {
+  try {
+    const users = await prisma.user.findMany({
+      where: { role: { in: ['admin', 'staff', 'master', 'manager', 'seller'] } },
+      orderBy: [{ active: 'desc' }, { createdAt: 'asc' }],
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        role: true,
+        active: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+    });
+
+    res.json(users.map(sanitizeDashboardUser));
+  } catch {
+    res.status(500).json({ error: 'Erro interno' });
+  }
+});
+
+router.post('/users', requireRole('master'), async (req: AuthRequest, res) => {
+  try {
+    const { name, email, password, role, active } = req.body ?? {};
+    const cleanName = String(name || '').trim();
+    const cleanEmail = String(email || '').trim().toLowerCase();
+    const cleanPassword = String(password || '');
+    const cleanRole = sanitizeStaffRole(role);
+
+    if (cleanName.length < 2) {
+      return res.status(400).json({ error: 'Informe um nome válido' });
+    }
+
+    if (!cleanEmail || !cleanEmail.includes('@')) {
+      return res.status(400).json({ error: 'Informe um e-mail válido' });
+    }
+
+    if (cleanPassword.length < 6) {
+      return res.status(400).json({ error: 'A senha deve ter pelo menos 6 caracteres' });
+    }
+
+    const existingUser = await prisma.user.findUnique({ where: { email: cleanEmail } });
+    if (existingUser) {
+      return res.status(409).json({ error: 'Já existe um usuário com esse e-mail' });
+    }
+
+    const hashedPassword = await bcrypt.hash(cleanPassword, 10);
+    const user = await prisma.user.create({
+      data: {
+        name: cleanName,
+        email: cleanEmail,
+        password: hashedPassword,
+        role: cleanRole,
+        active: active !== false,
+      },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        role: true,
+        active: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+    });
+
+    res.status(201).json(sanitizeDashboardUser(user));
+  } catch {
+    res.status(500).json({ error: 'Erro interno' });
+  }
+});
+
+router.patch('/users/:id', requireRole('master'), async (req: AuthRequest, res) => {
+  try {
+    const userId = String(req.params.id);
+    const currentUserId = req.user?.id;
+    const existingUser = await prisma.user.findUnique({ where: { id: userId } });
+    if (!existingUser) {
+      return res.status(404).json({ error: 'Usuário não encontrado' });
+    }
+
+    const data: Record<string, unknown> = {};
+
+    if (req.body?.name !== undefined) {
+      const cleanName = String(req.body.name || '').trim();
+      if (cleanName.length < 2) {
+        return res.status(400).json({ error: 'Informe um nome válido' });
+      }
+      data.name = cleanName;
+    }
+
+    if (req.body?.email !== undefined) {
+      const cleanEmail = String(req.body.email || '').trim().toLowerCase();
+      if (!cleanEmail || !cleanEmail.includes('@')) {
+        return res.status(400).json({ error: 'Informe um e-mail válido' });
+      }
+      const collision = await prisma.user.findFirst({
+        where: { email: cleanEmail, id: { not: userId } },
+        select: { id: true },
+      });
+      if (collision) {
+        return res.status(409).json({ error: 'Já existe um usuário com esse e-mail' });
+      }
+      data.email = cleanEmail;
+    }
+
+    if (req.body?.role !== undefined) {
+      data.role = sanitizeStaffRole(req.body.role);
+    }
+
+    if (req.body?.active !== undefined) {
+      if (currentUserId === userId && req.body.active === false) {
+        return res.status(400).json({ error: 'Você não pode desativar o próprio acesso' });
+      }
+      data.active = Boolean(req.body.active);
+    }
+
+    if (req.body?.password) {
+      const cleanPassword = String(req.body.password);
+      if (cleanPassword.length < 6) {
+        return res.status(400).json({ error: 'A senha deve ter pelo menos 6 caracteres' });
+      }
+      data.password = await bcrypt.hash(cleanPassword, 10);
+    }
+
+    const user = await prisma.user.update({
+      where: { id: userId },
+      data,
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        role: true,
+        active: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+    });
+
+    res.json(sanitizeDashboardUser(user));
+  } catch {
+    res.status(500).json({ error: 'Erro interno' });
   }
 });
 

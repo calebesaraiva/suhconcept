@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { api } from './api';
-import type { ApiProduct, ProductsResponse } from './api';
+import type { ApiProduct, DashboardUser, ProductsResponse } from './api';
 
 // Generic data fetcher hook
 function useFetch<T>(fetcher: () => Promise<T>) {
@@ -48,7 +48,8 @@ function useFetch<T>(fetcher: () => Promise<T>) {
 }
 
 export function useProducts(params?: Record<string, string>) {
-  const key = JSON.stringify(params ?? null);
+  const mergedParams = useMemo(() => ({ limit: '500', ...(params ?? {}) }), [params]);
+  const key = JSON.stringify(mergedParams);
   const stableParams = useMemo(() => (
     key ? JSON.parse(key) as Record<string, string> | null : null
   ), [key]);
@@ -93,4 +94,9 @@ export function useDashboardCoupons() {
 export function useDashboardFinance(period: 'mensal' | 'trimestral' | 'anual') {
   const fetcher = useCallback(() => api.dashboard.finance(period), [period]);
   return useFetch(fetcher);
+}
+
+export function useDashboardUsers() {
+  const fetcher = useCallback(() => api.dashboard.users(), []);
+  return useFetch<DashboardUser[]>(fetcher);
 }

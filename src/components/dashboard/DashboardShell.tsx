@@ -13,18 +13,23 @@ import Payments from './Payments';
 import Coupons from './Coupons';
 import Settings from './Settings';
 import ShippingSimulator from './ShippingSimulator';
+import AccessManagement from './AccessManagement';
 import Toast from '../ui/Toast';
 import { useStore } from '../../store/useStore';
+import { canManageDashboardUsers, canManageProducts, canViewCustomers, isDashboardStaffRole, normalizeDashboardRole } from '../../lib/dashboardRoles';
 
-const sectionMap: Record<string, React.ReactNode> = {
-  overview:  <Overview />,
-  orders:    <Orders />,
-  products:  <Products />,
-  shipping:  <ShippingSimulator />,
-  customers: <Customers />,
-  finance:   <Finance />,
-  payments:  <Payments />,
-  marketing: (
+function getSectionMap(role: string): Record<string, React.ReactNode> {
+  return {
+    overview:  <Overview />,
+    orders:    <Orders role={role} />,
+    ...(canManageProducts(role) ? { products: <Products role={role} /> } : {}),
+    shipping:  <ShippingSimulator />,
+    ...(canViewCustomers(role) ? { customers: <Customers /> } : {}),
+    ...(role === 'master' ? {
+      finance:   <Finance />,
+      payments:  <Payments />,
+    } : {}),
+    ...(role === 'master' ? { marketing: (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 18, maxWidth: 760 }}>
       <div style={{ background: '#111117', borderRadius: 18, border: '1px solid rgba(255,255,255,0.06)', padding: 26 }}>
         <p style={{ fontSize: 11, fontWeight: 700, color: '#999', letterSpacing: '0.14em', textTransform: 'uppercase', marginBottom: 8 }}>Marketing</p>
@@ -34,10 +39,11 @@ const sectionMap: Record<string, React.ReactNode> = {
         </p>
       </div>
     </div>
-  ),
-  coupons:   <Coupons />,
-  settings:  <Settings />,
-};
+  ) } : {}),
+    ...(role === 'master' ? { coupons: <Coupons />, settings: <Settings /> } : {}),
+    ...(canManageDashboardUsers(role) ? { access: <AccessManagement /> } : {}),
+  };
+}
 
 function timeAgo(iso: string) {
   const diff = (Date.now() - new Date(iso).getTime()) / 1000;
@@ -60,7 +66,7 @@ function LoginGate({ onLogin }: { onLogin: () => void }) {
     setError('');
     try {
       const { token, user } = await api.auth.login(email, password);
-      if (!['admin', 'staff'].includes(user.role)) {
+      if (!isDashboardStaffRole(user.role)) {
         setError('Acesso permitido apenas para usuários do painel');
         return;
       }
@@ -156,12 +162,12 @@ export default function DashboardShell() {
     if (!token) return;
     api.auth.me()
       .then(user => {
-        if (!['admin', 'staff'].includes(user.role)) {
+        if (!isDashboardStaffRole(user.role)) {
           localStorage.removeItem('suh_token');
           setAuthed(false);
           setCurrentUser(null);
         } else {
-          setCurrentUser(user);
+          setCurrentUser({ ...user, role: normalizeDashboardRole(user.role) });
         }
       })
       .catch(() => {
@@ -170,6 +176,15 @@ export default function DashboardShell() {
         setCurrentUser(null);
       });
   }, [authed]);
+
+  useEffect(() => {
+    if (!currentUser) return;
+    const role = normalizeDashboardRole(currentUser.role);
+    const allowedSections = new Set(Object.keys(getSectionMap(role)));
+    if (!allowedSections.has(dashboardSection)) {
+      setDashboardSection('overview');
+    }
+  }, [currentUser, dashboardSection, setDashboardSection]);
 
   // Poll alerts every 30s
   useEffect(() => {
@@ -208,6 +223,8 @@ export default function DashboardShell() {
   }, [authed]);
 
   const unread = urgentCount - seenCount > 0 ? urgentCount - seenCount : (alerts.length > 0 && seenCount === 0 ? alerts.filter(a => a.urgent).length : 0);
+  const normalizedRole = normalizeDashboardRole(currentUser?.role);
+  const sectionMap = getSectionMap(normalizedRole);
 
   if (!authed) return <LoginGate onLogin={() => setAuthed(true)} />;
 
@@ -222,7 +239,7 @@ export default function DashboardShell() {
 
       {/* ── Sidebar desktop ── */}
       <div className="dash-sidebar-desktop">
-        <Sidebar collapsed={collapsed} onToggle={() => setCollapsed(!collapsed)} role={currentUser?.role || 'admin'} />
+        <Sidebar collapsed={collapsed} onToggle={() => setCollapsed(!collapsed)} role={normalizedRole || 'master'} />
       </div>
 
       {/* ── Sidebar mobile overlay ── */}
@@ -238,7 +255,7 @@ export default function DashboardShell() {
               initial={{ x: '-100%' }} animate={{ x: 0 }} exit={{ x: '-100%' }}
               transition={{ type: 'tween', duration: 0.28 }}
               style={{ position: 'fixed', left: 0, top: 0, bottom: 0, zIndex: 61 }}>
-              <Sidebar collapsed={false} onToggle={() => setMobileSidebar(false)} role={currentUser?.role || 'admin'} />
+              <Sidebar collapsed={false} onToggle={() => setMobileSidebar(false)} role={normalizedRole || 'master'} />
             </motion.div>
           </>
         )}

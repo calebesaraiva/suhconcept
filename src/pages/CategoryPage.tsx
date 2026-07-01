@@ -131,7 +131,7 @@ export default function CategoryPage() {
   const { slug = 'todos' } = useParams();
   const title = TITLE[slug] ?? slug;
 
-  const { data: productsData, loading: productsLoading } = useProducts();
+  const { data: productsData, loading: productsLoading } = useProducts({ limit: '500' });
   const allProducts = useMemo(() => productsData?.products ?? [], [productsData]);
   const isDesktop = () => typeof window !== 'undefined' && window.innerWidth >= 768;
 

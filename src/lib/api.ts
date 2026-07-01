@@ -109,6 +109,16 @@ export interface ApiUser {
   id: string; name: string; email: string; role: string;
 }
 
+export interface DashboardUser {
+  id: string;
+  name: string;
+  email: string;
+  role: string;
+  active: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface ApiCustomer {
   id: string; name: string; email: string; phone?: string;
   city?: string; status: string; avatar?: string;
@@ -258,6 +268,17 @@ export const api = {
         products: { id: string; name: string; quantity: number; unitPrice: number }[];
       }>('/dashboard/shipping/simulate', {
         method: 'POST',
+        body: JSON.stringify(data),
+      }),
+    users: () => request<DashboardUser[]>('/dashboard/users'),
+    createUser: (data: { name: string; email: string; password: string; role: string; active: boolean }) =>
+      request<DashboardUser>('/dashboard/users', {
+        method: 'POST',
+        body: JSON.stringify(data),
+      }),
+    updateUser: (id: string, data: Partial<{ name: string; email: string; password: string; role: string; active: boolean }>) =>
+      request<DashboardUser>(`/dashboard/users/${id}`, {
+        method: 'PATCH',
         body: JSON.stringify(data),
       }),
   },

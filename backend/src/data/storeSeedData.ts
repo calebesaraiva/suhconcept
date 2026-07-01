@@ -51,11 +51,25 @@ export const adminUsers = [
     email: 'admin@suhconcept.com.br',
     password: 'suh@2026',
     name: 'Admin',
+    role: 'master',
   },
   {
     email: 'nexus@suhconcept.com.br',
     password: 'nexus@2026',
     name: 'Nexus',
+    role: 'master',
+  },
+  {
+    email: 'gerente@suhconcept.com.br',
+    password: 'gerente@2026',
+    name: 'Gerente',
+    role: 'manager',
+  },
+  {
+    email: 'vendedor@suhconcept.com.br',
+    password: 'vendedor@2026',
+    name: 'Vendedor',
+    role: 'seller',
   },
 ];
 

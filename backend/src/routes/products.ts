@@ -8,7 +8,7 @@ const router = Router();
 router.get('/', async (req, res) => {
   try {
     const { category, search, sort, collection, bestSeller, isNew, limit, page } = req.query;
-    const take = parseInt(limit as string) || 50;
+    const take = parseInt(limit as string) || 500;
     const skip = (parseInt(page as string) - 1 || 0) * take;
 
     const where: Record<string, unknown> = { active: true };

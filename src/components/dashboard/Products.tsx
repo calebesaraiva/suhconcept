@@ -5,6 +5,7 @@ import { useDashboardProducts } from '../../lib/useApi';
 import { api } from '../../lib/api';
 import type { ApiProduct } from '../../lib/api';
 import { useStore } from '../../store/useStore';
+import { canViewCostData } from '../../lib/dashboardRoles';
 
 const card: React.CSSProperties = {
   background: '#111117',
@@ -89,7 +90,7 @@ type EditForm = {
   active: boolean;
 };
 
-export default function Products() {
+export default function Products({ role }: { role: string }) {
   const { showToast } = useStore();
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState('todos');
@@ -107,6 +108,7 @@ export default function Products() {
 
   const { data: productsRaw, loading, refetch } = useDashboardProducts();
   const products = productsRaw ?? [];
+  const showCostFields = canViewCostData(role);
 
   const categories = ['todos', ...Array.from(new Set([...presetCategories, ...products.map(p => p.category)]))];
 
@@ -119,7 +121,7 @@ export default function Products() {
   /* KPI – also compute total margin */
   const totalStockValue = products.reduce((s, p) => s + p.stock * (p.costPrice ?? p.price * 0.58), 0);
   const statsData = [
-    { label: 'Total',         value: products.length,                                                color: '#a855f7', icon: Package,       sub: `${fmtBRL(totalStockValue)} em estoque` },
+    { label: 'Total',         value: products.length,                                                color: '#a855f7', icon: Package,       sub: showCostFields ? `${fmtBRL(totalStockValue)} em estoque` : 'controle geral do catálogo' },
     { label: 'Em Estoque',    value: products.filter(p => p.stock > 5).length,                       color: '#22c55e', icon: CheckCircle,   sub: 'acima de 5 unidades' },
     { label: 'Estoque Baixo', value: products.filter(p => p.stock > 0 && p.stock <= 5).length,       color: '#f59e0b', icon: AlertTriangle, sub: 'entre 1 e 5 unidades' },
     { label: 'Sem Estoque',   value: products.filter(p => p.stock === 0).length,                     color: '#ef4444', icon: X,             sub: 'esgotados' },
@@ -328,7 +330,7 @@ export default function Products() {
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead>
                 <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-                  {['Produto', 'SKU', 'Categoria', 'Custo', 'Venda', 'Margem', 'Estoque', 'Avaliação', 'Status', ''].map(h => (
+                  {['Produto', 'SKU', 'Categoria', ...(showCostFields ? ['Custo'] : []), 'Venda', ...(showCostFields ? ['Margem'] : []), 'Estoque', 'Avaliação', 'Status', ''].map(h => (
                     <th key={h} style={{ textAlign: 'left', padding: '14px 16px', fontSize: 10, fontWeight: 700, color: '#555', textTransform: 'uppercase', letterSpacing: '0.12em', whiteSpace: 'nowrap' }}>{h}</th>
                   ))}
                 </tr>
@@ -358,26 +360,30 @@ export default function Products() {
                       </td>
                       <td style={{ padding: '12px 16px', fontSize: 11, color: '#666', fontFamily: 'monospace' }}>{p.sku}</td>
                       <td style={{ padding: '12px 16px', fontSize: 12, color: '#999', textTransform: 'capitalize' }}>{p.category}</td>
-                      <td style={{ padding: '12px 16px' }}>
-                        {p.costPrice ? (
-                          <span style={{ fontSize: 12, color: '#555' }}>{fmtBRL(p.costPrice)}</span>
-                        ) : (
-                          <span style={{ fontSize: 11, color: '#555' }}>—</span>
-                        )}
-                      </td>
+                      {showCostFields && (
+                        <td style={{ padding: '12px 16px' }}>
+                          {p.costPrice ? (
+                            <span style={{ fontSize: 12, color: '#555' }}>{fmtBRL(p.costPrice)}</span>
+                          ) : (
+                            <span style={{ fontSize: 11, color: '#555' }}>—</span>
+                          )}
+                        </td>
+                      )}
                       <td style={{ padding: '12px 16px' }}>
                         <p style={{ fontSize: 13, fontWeight: 800, color: '#fff' }}>R$ {p.price.toFixed(2).replace('.', ',')}</p>
                       </td>
-                      <td style={{ padding: '12px 16px' }}>
-                        {margin !== null ? (
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-                            <TrendingUp size={12} style={{ color: marginColor(margin) }} />
-                            <span style={{ fontSize: 12, fontWeight: 800, color: marginColor(margin) }}>{margin.toFixed(0)}%</span>
-                          </div>
-                        ) : (
-                          <span style={{ fontSize: 11, color: '#555' }}>—</span>
-                        )}
-                      </td>
+                      {showCostFields && (
+                        <td style={{ padding: '12px 16px' }}>
+                          {margin !== null ? (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                              <TrendingUp size={12} style={{ color: marginColor(margin) }} />
+                              <span style={{ fontSize: 12, fontWeight: 800, color: marginColor(margin) }}>{margin.toFixed(0)}%</span>
+                            </div>
+                          ) : (
+                            <span style={{ fontSize: 11, color: '#555' }}>—</span>
+                          )}
+                        </td>
+                      )}
                       <td style={{ padding: '12px 16px' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
                           <div style={{ width: 7, height: 7, borderRadius: '50%', background: stockColor, boxShadow: `0 0 5px ${stockColor}` }} />
@@ -495,13 +501,15 @@ export default function Products() {
                   </div>
                 </div>
 
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-                  <div>
-                    <label style={lbl}>Valor de Custo (R$)</label>
-                    <input type="number" value={editForm?.costPrice ?? ''} onChange={e => setEditForm(form => form ? { ...form, costPrice: e.target.value } : form)} min="0" step="0.01" placeholder="0,00" style={inp}
-                      onFocus={e => (e.target.style.borderColor = 'rgba(168,85,247,0.3)')}
-                      onBlur={e => (e.target.style.borderColor = 'rgba(255,255,255,0.08)')} />
-                  </div>
+                <div style={{ display: 'grid', gridTemplateColumns: showCostFields ? '1fr 1fr' : '1fr', gap: 12 }}>
+                  {showCostFields && (
+                    <div>
+                      <label style={lbl}>Valor de Custo (R$)</label>
+                      <input type="number" value={editForm?.costPrice ?? ''} onChange={e => setEditForm(form => form ? { ...form, costPrice: e.target.value } : form)} min="0" step="0.01" placeholder="0,00" style={inp}
+                        onFocus={e => (e.target.style.borderColor = 'rgba(168,85,247,0.3)')}
+                        onBlur={e => (e.target.style.borderColor = 'rgba(255,255,255,0.08)')} />
+                    </div>
+                  )}
                   <div>
                     <label style={lbl}>Valor de Venda (R$)</label>
                     <input type="number" value={editForm?.price ?? ''} onChange={e => setEditForm(form => form ? { ...form, price: e.target.value } : form)} min="0" step="0.01" style={inp}
@@ -603,7 +611,7 @@ export default function Products() {
                 </div>
 
                 {/* Profit preview */}
-                {editForm?.costPrice && editForm?.price && parseFloat(editForm.price) > 0 && (() => {
+                {showCostFields && editForm?.costPrice && editForm?.price && parseFloat(editForm.price) > 0 && (() => {
                   const s = parseFloat(editForm.price), c = parseFloat(editForm.costPrice);
                   const lc = s - c;
                   const mg = (lc / s) * 100;
@@ -706,13 +714,15 @@ export default function Products() {
                 </div>
 
                 {/* Custo + Venda + Estoque */}
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 }}>
-                  <div>
-                    <label style={lbl}>Valor de Custo (R$)</label>
-                    <input type="number" value={form.costPrice} onChange={e => setForm(f => ({ ...f, costPrice: e.target.value }))} placeholder="0,00" min="0" step="0.01" style={inp}
-                      onFocus={e => (e.target.style.borderColor = 'rgba(168,85,247,0.3)')}
-                      onBlur={e => (e.target.style.borderColor = 'rgba(255,255,255,0.08)')} />
-                  </div>
+                <div style={{ display: 'grid', gridTemplateColumns: showCostFields ? '1fr 1fr 1fr' : '1fr 1fr', gap: 12 }}>
+                  {showCostFields && (
+                    <div>
+                      <label style={lbl}>Valor de Custo (R$)</label>
+                      <input type="number" value={form.costPrice} onChange={e => setForm(f => ({ ...f, costPrice: e.target.value }))} placeholder="0,00" min="0" step="0.01" style={inp}
+                        onFocus={e => (e.target.style.borderColor = 'rgba(168,85,247,0.3)')}
+                        onBlur={e => (e.target.style.borderColor = 'rgba(255,255,255,0.08)')} />
+                    </div>
+                  )}
                   <div>
                     <label style={lbl}>Valor de Venda (R$) *</label>
                     <input type="number" value={form.price} onChange={e => setForm(f => ({ ...f, price: e.target.value }))} placeholder="0,00" min="0" step="0.01" style={inp}
@@ -728,7 +738,7 @@ export default function Products() {
                 </div>
 
                 {/* Profit calculator — aparece quando custo + venda preenchidos */}
-                {previewSale > 0 && previewCost > 0 && (
+                {showCostFields && previewSale > 0 && previewCost > 0 && (
                   <div style={{ background: 'rgba(168,85,247,0.06)', borderRadius: 12, padding: '14px 16px', border: '1px solid rgba(168,85,247,0.12)' }}>
                     <p style={{ fontSize: 10, fontWeight: 700, color: '#555', letterSpacing: '0.1em', textTransform: 'uppercase', marginBottom: 10 }}>Prévia de Lucro</p>
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8 }}>

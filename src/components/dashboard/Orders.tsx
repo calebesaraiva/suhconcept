@@ -6,6 +6,7 @@ import { useDashboardOrders } from '../../lib/useApi';
 import { api } from '../../lib/api';
 import type { ApiOrder } from '../../lib/api';
 import { useStore } from '../../store/useStore';
+import { canCancelOrders } from '../../lib/dashboardRoles';
 
 const statusConfig: Record<string, { label: string; icon: LucideIcon; color: string }> = {
   pendente:             { label: 'Pendente',    icon: Clock,        color: '#f59e0b' },
@@ -46,7 +47,7 @@ function getAddressMeta(order: ApiOrder) {
   };
 }
 
-export default function Orders() {
+export default function Orders({ role }: { role: string }) {
   const { showToast } = useStore();
   const [search, setSearch] = useState('');
   const [filterStatus, setFilterStatus] = useState('todos');
@@ -93,6 +94,7 @@ export default function Orders() {
     return acc;
   }, {} as Record<string, number>);
   const totalRevenue = orders.reduce((sum, o) => sum + o.total, 0);
+  const allowCancel = canCancelOrders(role);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
@@ -328,10 +330,12 @@ export default function Orders() {
                       </button>
                     );
                   })}
-                  <button disabled={updatingStatus} onClick={() => handleUpdateStatus(selected.id, 'cancelado')}
-                    style={{ padding: '8px 14px', borderRadius: 9, border: `1px solid ${selected.status === 'cancelado' ? '#ef4444' : 'rgba(239,68,68,0.2)'}`, background: selected.status === 'cancelado' ? 'rgba(239,68,68,0.1)' : 'transparent', color: '#ef4444', fontSize: 11, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
-                    Cancelar pedido
-                  </button>
+                  {allowCancel && (
+                    <button disabled={updatingStatus} onClick={() => handleUpdateStatus(selected.id, 'cancelado')}
+                      style={{ padding: '8px 14px', borderRadius: 9, border: `1px solid ${selected.status === 'cancelado' ? '#ef4444' : 'rgba(239,68,68,0.2)'}`, background: selected.status === 'cancelado' ? 'rgba(239,68,68,0.1)' : 'transparent', color: '#ef4444', fontSize: 11, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
+                      Cancelar pedido
+                    </button>
+                  )}
                 </div>
               </div>
 

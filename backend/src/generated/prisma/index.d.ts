@@ -7866,6 +7866,7 @@ export namespace Prisma {
     password: string | null
     name: string | null
     role: string | null
+    active: boolean | null
     createdAt: Date | null
     updatedAt: Date | null
   }
@@ -7876,6 +7877,7 @@ export namespace Prisma {
     password: string | null
     name: string | null
     role: string | null
+    active: boolean | null
     createdAt: Date | null
     updatedAt: Date | null
   }
@@ -7886,6 +7888,7 @@ export namespace Prisma {
     password: number
     name: number
     role: number
+    active: number
     createdAt: number
     updatedAt: number
     _all: number
@@ -7898,6 +7901,7 @@ export namespace Prisma {
     password?: true
     name?: true
     role?: true
+    active?: true
     createdAt?: true
     updatedAt?: true
   }
@@ -7908,6 +7912,7 @@ export namespace Prisma {
     password?: true
     name?: true
     role?: true
+    active?: true
     createdAt?: true
     updatedAt?: true
   }
@@ -7918,6 +7923,7 @@ export namespace Prisma {
     password?: true
     name?: true
     role?: true
+    active?: true
     createdAt?: true
     updatedAt?: true
     _all?: true
@@ -8001,6 +8007,7 @@ export namespace Prisma {
     password: string
     name: string
     role: string
+    active: boolean
     createdAt: Date
     updatedAt: Date
     _count: UserCountAggregateOutputType | null
@@ -8028,6 +8035,7 @@ export namespace Prisma {
     password?: boolean
     name?: boolean
     role?: boolean
+    active?: boolean
     createdAt?: boolean
     updatedAt?: boolean
   }, ExtArgs["result"]["user"]>
@@ -8038,6 +8046,7 @@ export namespace Prisma {
     password?: boolean
     name?: boolean
     role?: boolean
+    active?: boolean
     createdAt?: boolean
     updatedAt?: boolean
   }, ExtArgs["result"]["user"]>
@@ -8048,6 +8057,7 @@ export namespace Prisma {
     password?: boolean
     name?: boolean
     role?: boolean
+    active?: boolean
     createdAt?: boolean
     updatedAt?: boolean
   }
@@ -8062,6 +8072,7 @@ export namespace Prisma {
       password: string
       name: string
       role: string
+      active: boolean
       createdAt: Date
       updatedAt: Date
     }, ExtArgs["result"]["user"]>
@@ -8462,6 +8473,7 @@ export namespace Prisma {
     readonly password: FieldRef<"User", 'String'>
     readonly name: FieldRef<"User", 'String'>
     readonly role: FieldRef<"User", 'String'>
+    readonly active: FieldRef<"User", 'Boolean'>
     readonly createdAt: FieldRef<"User", 'DateTime'>
     readonly updatedAt: FieldRef<"User", 'DateTime'>
   }
@@ -9740,6 +9752,7 @@ export namespace Prisma {
     password: 'password',
     name: 'name',
     role: 'role',
+    active: 'active',
     createdAt: 'createdAt',
     updatedAt: 'updatedAt'
   };
@@ -10469,6 +10482,7 @@ export namespace Prisma {
     password?: StringFilter<"User"> | string
     name?: StringFilter<"User"> | string
     role?: StringFilter<"User"> | string
+    active?: BoolFilter<"User"> | boolean
     createdAt?: DateTimeFilter<"User"> | Date | string
     updatedAt?: DateTimeFilter<"User"> | Date | string
   }
@@ -10479,6 +10493,7 @@ export namespace Prisma {
     password?: SortOrder
     name?: SortOrder
     role?: SortOrder
+    active?: SortOrder
     createdAt?: SortOrder
     updatedAt?: SortOrder
   }
@@ -10492,6 +10507,7 @@ export namespace Prisma {
     password?: StringFilter<"User"> | string
     name?: StringFilter<"User"> | string
     role?: StringFilter<"User"> | string
+    active?: BoolFilter<"User"> | boolean
     createdAt?: DateTimeFilter<"User"> | Date | string
     updatedAt?: DateTimeFilter<"User"> | Date | string
   }, "id" | "email">
@@ -10502,6 +10518,7 @@ export namespace Prisma {
     password?: SortOrder
     name?: SortOrder
     role?: SortOrder
+    active?: SortOrder
     createdAt?: SortOrder
     updatedAt?: SortOrder
     _count?: UserCountOrderByAggregateInput
@@ -10518,6 +10535,7 @@ export namespace Prisma {
     password?: StringWithAggregatesFilter<"User"> | string
     name?: StringWithAggregatesFilter<"User"> | string
     role?: StringWithAggregatesFilter<"User"> | string
+    active?: BoolWithAggregatesFilter<"User"> | boolean
     createdAt?: DateTimeWithAggregatesFilter<"User"> | Date | string
     updatedAt?: DateTimeWithAggregatesFilter<"User"> | Date | string
   }
@@ -11251,6 +11269,7 @@ export namespace Prisma {
     password: string
     name: string
     role?: string
+    active?: boolean
     createdAt?: Date | string
     updatedAt?: Date | string
   }
@@ -11261,6 +11280,7 @@ export namespace Prisma {
     password: string
     name: string
     role?: string
+    active?: boolean
     createdAt?: Date | string
     updatedAt?: Date | string
   }
@@ -11271,6 +11291,7 @@ export namespace Prisma {
     password?: StringFieldUpdateOperationsInput | string
     name?: StringFieldUpdateOperationsInput | string
     role?: StringFieldUpdateOperationsInput | string
+    active?: BoolFieldUpdateOperationsInput | boolean
     createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
     updatedAt?: DateTimeFieldUpdateOperationsInput | Date | string
   }
@@ -11281,6 +11302,7 @@ export namespace Prisma {
     password?: StringFieldUpdateOperationsInput | string
     name?: StringFieldUpdateOperationsInput | string
     role?: StringFieldUpdateOperationsInput | string
+    active?: BoolFieldUpdateOperationsInput | boolean
     createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
     updatedAt?: DateTimeFieldUpdateOperationsInput | Date | string
   }
@@ -11291,6 +11313,7 @@ export namespace Prisma {
     password: string
     name: string
     role?: string
+    active?: boolean
     createdAt?: Date | string
     updatedAt?: Date | string
   }
@@ -11301,6 +11324,7 @@ export namespace Prisma {
     password?: StringFieldUpdateOperationsInput | string
     name?: StringFieldUpdateOperationsInput | string
     role?: StringFieldUpdateOperationsInput | string
+    active?: BoolFieldUpdateOperationsInput | boolean
     createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
     updatedAt?: DateTimeFieldUpdateOperationsInput | Date | string
   }
@@ -11311,6 +11335,7 @@ export namespace Prisma {
     password?: StringFieldUpdateOperationsInput | string
     name?: StringFieldUpdateOperationsInput | string
     role?: StringFieldUpdateOperationsInput | string
+    active?: BoolFieldUpdateOperationsInput | boolean
     createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
     updatedAt?: DateTimeFieldUpdateOperationsInput | Date | string
   }
@@ -12080,6 +12105,7 @@ export namespace Prisma {
     password?: SortOrder
     name?: SortOrder
     role?: SortOrder
+    active?: SortOrder
     createdAt?: SortOrder
     updatedAt?: SortOrder
   }
@@ -12090,6 +12116,7 @@ export namespace Prisma {
     password?: SortOrder
     name?: SortOrder
     role?: SortOrder
+    active?: SortOrder
     createdAt?: SortOrder
     updatedAt?: SortOrder
   }
@@ -12100,6 +12127,7 @@ export namespace Prisma {
     password?: SortOrder
     name?: SortOrder
     role?: SortOrder
+    active?: SortOrder
     createdAt?: SortOrder
     updatedAt?: SortOrder
   }

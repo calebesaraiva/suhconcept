@@ -12,13 +12,15 @@ async function syncStore(prisma: PrismaClient) {
       update: {
         name: user.name,
         password: hashedPassword,
-        role: 'admin',
+        role: user.role,
+        active: true,
       },
       create: {
         email: user.email,
         password: hashedPassword,
         name: user.name,
-        role: 'admin',
+        role: user.role,
+        active: true,
       },
     });
   }
