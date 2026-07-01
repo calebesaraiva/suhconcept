@@ -104,6 +104,7 @@ export default function CartDrawer({ open, onClose }: Props) {
           <motion.div
             initial={{ x: '100%' }} animate={{ x: 0 }} exit={{ x: '100%' }}
             transition={{ type: 'tween', duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
+            className="cart-drawer"
             style={{
               position: 'fixed', right: 0, top: 0, bottom: 0, zIndex: 51,
               width: '100%', maxWidth: 440,
@@ -114,7 +115,7 @@ export default function CartDrawer({ open, onClose }: Props) {
             }}>
 
             {/* ── Header ── */}
-            <div style={{ padding: '20px 22px', borderBottom: '1px solid rgba(255,255,255,0.07)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: '#0b0b0b' }}>
+            <div className="cart-drawer-header" style={{ padding: '20px 22px', borderBottom: '1px solid rgba(255,255,255,0.07)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: '#0b0b0b' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                 <div style={{ width: 36, height: 36, borderRadius: 10, background: 'rgba(255,184,0,0.1)', border: '1px solid rgba(255,184,0,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                   <ShoppingBag size={17} style={{ color: '#a855f7' }} />
@@ -131,7 +132,7 @@ export default function CartDrawer({ open, onClose }: Props) {
             </div>
 
             {/* ── Shipping progress ── */}
-            <div style={{ padding: '12px 22px', background: freeShip ? 'rgba(34,197,94,0.05)' : '#0b0b0b', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+            <div className="cart-drawer-progress" style={{ padding: '12px 22px', background: freeShip ? 'rgba(34,197,94,0.05)' : '#0b0b0b', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
               {freeShip ? (
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                   <Truck size={14} style={{ color: '#22C55E' }} />
@@ -154,7 +155,7 @@ export default function CartDrawer({ open, onClose }: Props) {
             </div>
 
             {/* ── Items ── */}
-            <div style={{ flex: 1, overflowY: 'auto', padding: '16px 22px', display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <div className="cart-drawer-content" style={{ flex: 1, overflowY: 'auto', padding: '16px 22px', display: 'flex', flexDirection: 'column', gap: 12 }}>
               {cart.length === 0 ? (
                 /* Empty state */
                 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', textAlign: 'center', gap: 0 }}>
@@ -178,16 +179,17 @@ export default function CartDrawer({ open, onClose }: Props) {
                     initial={{ opacity: 0, x: 20 }}
                     animate={{ opacity: 1, x: 0 }}
                     exit={{ opacity: 0, x: 40 }}
+                    className="cart-item-card"
                     style={{ display: 'flex', gap: 14, padding: '14px', borderRadius: 12, background: '#161616', border: '1px solid rgba(255,255,255,0.06)' }}>
 
                     {/* Image */}
-                    <div style={{ width: 80, height: 96, borderRadius: 8, overflow: 'hidden', flexShrink: 0, background: '#0d0d0d' }}>
+                    <div className="cart-item-image" style={{ width: 80, height: 96, borderRadius: 8, overflow: 'hidden', flexShrink: 0, background: '#0d0d0d' }}>
                       <img src={item.product.image} alt={item.product.name}
                         style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
                     </div>
 
                     {/* Info */}
-                    <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+                    <div className="cart-item-body" style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
                       <div>
                         <p style={{ fontSize: 13.5, fontWeight: 700, color: '#e8e8e8', lineHeight: 1.3, marginBottom: 7, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>
                           {item.product.name}
@@ -204,7 +206,7 @@ export default function CartDrawer({ open, onClose }: Props) {
                         </div>
                       </div>
 
-                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                      <div className="cart-item-bottom" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                         {/* Qty */}
                         <div style={{ display: 'flex', alignItems: 'center', borderRadius: 7, overflow: 'hidden', border: '1px solid rgba(255,255,255,0.1)' }}>
                           <button onClick={() => updateQuantity(item.product.id, item.size, item.color, item.quantity - 1)}
@@ -219,8 +221,8 @@ export default function CartDrawer({ open, onClose }: Props) {
                         </div>
 
                         {/* Price + remove */}
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                          <div style={{ textAlign: 'right' }}>
+                        <div className="cart-item-actions" style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                          <div className="cart-item-price" style={{ textAlign: 'right' }}>
                             <p style={{ fontSize: 15, fontWeight: 900, color: '#fff' }}>
                               R$ {getProductPricing(item.product, settings, item.quantity, 'card').totalPrice.toFixed(2).replace('.', ',')}
                             </p>
@@ -250,10 +252,10 @@ export default function CartDrawer({ open, onClose }: Props) {
 
             {/* ── Footer / Summary ── */}
             {cart.length > 0 && (
-              <div style={{ borderTop: '1px solid rgba(255,255,255,0.07)', background: '#0b0b0b', padding: '18px 22px 22px', display: 'flex', flexDirection: 'column', gap: 14 }}>
+              <div className="cart-drawer-footer" style={{ borderTop: '1px solid rgba(255,255,255,0.07)', background: '#0b0b0b', padding: '18px 22px 22px', display: 'flex', flexDirection: 'column', gap: 14 }}>
 
                 {/* Coupon */}
-                <div style={{ display: 'flex', gap: 8 }}>
+                <div className="cart-coupon-row" style={{ display: 'flex', gap: 8 }}>
                   <div style={{ position: 'relative', flex: 1 }}>
                     <Tag size={13} style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: '#444', pointerEvents: 'none' }} />
                     <input
@@ -270,9 +272,9 @@ export default function CartDrawer({ open, onClose }: Props) {
                   </button>
                 </div>
 
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 12, padding: '16px', borderRadius: 16, background: 'linear-gradient(180deg, rgba(20,20,20,0.98), rgba(15,15,15,0.98))', border: `1px solid ${shippingError ? 'rgba(255,184,0,0.24)' : shippingQuote || freeShip ? 'rgba(34,197,94,0.18)' : 'rgba(255,255,255,0.08)'}`, boxShadow: shippingQuote || freeShip ? '0 18px 38px rgba(34,197,94,0.08)' : '0 18px 38px rgba(0,0,0,0.24)' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <div className="cart-shipping-card" style={{ display: 'flex', flexDirection: 'column', gap: 12, padding: '16px', borderRadius: 16, background: 'linear-gradient(180deg, rgba(20,20,20,0.98), rgba(15,15,15,0.98))', border: `1px solid ${shippingError ? 'rgba(255,184,0,0.24)' : shippingQuote || freeShip ? 'rgba(34,197,94,0.18)' : 'rgba(255,255,255,0.08)'}`, boxShadow: shippingQuote || freeShip ? '0 18px 38px rgba(34,197,94,0.08)' : '0 18px 38px rgba(0,0,0,0.24)' }}>
+                  <div className="cart-shipping-top" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+                    <div className="cart-shipping-title-wrap" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                       <div style={{ width: 36, height: 36, borderRadius: 12, background: shippingQuote || freeShip ? 'rgba(34,197,94,0.12)' : 'rgba(168,85,247,0.12)', border: `1px solid ${shippingQuote || freeShip ? 'rgba(34,197,94,0.24)' : 'rgba(168,85,247,0.24)'}`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                         {shippingLoading ? (
                           <Loader2 size={16} style={{ color: '#22C55E', animation: 'spin 1s linear infinite' }} />
@@ -312,7 +314,7 @@ export default function CartDrawer({ open, onClose }: Props) {
                     />
                   </div>
 
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 12, alignItems: 'start', padding: '10px 12px', borderRadius: 12, background: shippingError ? 'rgba(255,184,0,0.08)' : 'rgba(255,255,255,0.03)', border: `1px solid ${shippingError ? 'rgba(255,184,0,0.18)' : 'rgba(255,255,255,0.05)'}` }}>
+                  <div className="cart-shipping-status" style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 12, alignItems: 'start', padding: '10px 12px', borderRadius: 12, background: shippingError ? 'rgba(255,184,0,0.08)' : 'rgba(255,255,255,0.03)', border: `1px solid ${shippingError ? 'rgba(255,184,0,0.18)' : 'rgba(255,255,255,0.05)'}` }}>
                     <div>
                       <p style={{ fontSize: 11, color: '#8b8b93', fontWeight: 800, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 5 }}>
                         Status do frete
@@ -321,7 +323,7 @@ export default function CartDrawer({ open, onClose }: Props) {
                         {shippingHint}
                       </p>
                     </div>
-                    <div style={{ textAlign: 'right', minWidth: 120 }}>
+                    <div className="cart-shipping-result" style={{ textAlign: 'right', minWidth: 120 }}>
                       <p style={{ fontSize: 10.5, color: '#8b8b93', fontWeight: 800, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 5 }}>
                         Resultado
                       </p>
@@ -333,7 +335,7 @@ export default function CartDrawer({ open, onClose }: Props) {
                 </div>
 
                 {/* Summary */}
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: '14px 16px', borderRadius: 10, background: '#111', border: '1px solid rgba(255,255,255,0.06)' }}>
+                <div className="cart-summary-card" style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: '14px 16px', borderRadius: 10, background: '#111', border: '1px solid rgba(255,255,255,0.06)' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: '#666' }}>
                     <span>Subtotal ({count} {count === 1 ? 'item' : 'itens'})</span>
                     <span style={{ color: '#aaa' }}>R$ {subtotalBase.toFixed(2).replace('.', ',')}</span>
@@ -381,7 +383,7 @@ export default function CartDrawer({ open, onClose }: Props) {
                 </div>
 
                 {/* Cashback banner */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '11px 14px', borderRadius: 10, background: 'rgba(255,184,0,0.07)', border: '1px solid rgba(255,184,0,0.2)' }}>
+                <div className="cart-cashback-banner" style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '11px 14px', borderRadius: 10, background: 'rgba(255,184,0,0.07)', border: '1px solid rgba(255,184,0,0.2)' }}>
                   <div style={{ width: 32, height: 32, borderRadius: 8, background: 'rgba(255,184,0,0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                     <Coins size={16} style={{ color: '#a855f7' }} />
                   </div>
