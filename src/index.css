@@ -1266,7 +1266,19 @@ body {
 
 /* ─── CART DRAWER ──────────────────────────────── */
 .cart-drawer {
+  display: grid !important;
+  grid-template-rows: auto auto minmax(0, 1fr) auto !important;
   overflow: hidden;
+}
+
+.cart-drawer-content {
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.cart-drawer-footer {
+  flex-shrink: 0;
 }
 
 .cart-item-card,
@@ -1318,6 +1330,7 @@ body {
 
   .cart-drawer-content {
     gap: 10px !important;
+    min-height: 0 !important;
   }
 
   .cart-item-card {

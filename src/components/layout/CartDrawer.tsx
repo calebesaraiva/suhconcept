@@ -115,7 +115,8 @@ export default function CartDrawer({ open, onClose }: Props) {
               width: '100%', maxWidth: 440,
               background: '#0f0f0f',
               borderLeft: '1px solid rgba(255,255,255,0.07)',
-              display: 'flex', flexDirection: 'column',
+              display: 'grid',
+              gridTemplateRows: 'auto auto minmax(0, 1fr) auto',
               boxShadow: '-24px 0 80px rgba(0,0,0,0.7)',
             }}>
 
@@ -160,7 +161,7 @@ export default function CartDrawer({ open, onClose }: Props) {
             </div>
 
             {/* ── Items ── */}
-            <div className="cart-drawer-content" style={{ flex: 1, overflowY: 'auto', padding: '16px 22px', display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <div className="cart-drawer-content" style={{ minHeight: 0, overflowY: 'auto', padding: '16px 22px', display: 'flex', flexDirection: 'column', gap: 12 }}>
               {cart.length === 0 ? (
                 /* Empty state */
                 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', textAlign: 'center', gap: 0 }}>
@@ -257,7 +258,7 @@ export default function CartDrawer({ open, onClose }: Props) {
 
             {/* ── Footer / Summary ── */}
             {cart.length > 0 && (
-              <div className="cart-drawer-footer" style={{ borderTop: '1px solid rgba(255,255,255,0.07)', background: '#0b0b0b', padding: '18px 22px 22px', display: 'flex', flexDirection: 'column', gap: 14 }}>
+              <div className="cart-drawer-footer" style={{ borderTop: '1px solid rgba(255,255,255,0.07)', background: '#0b0b0b', padding: '18px 22px 22px', display: 'flex', flexDirection: 'column', gap: 14, flexShrink: 0 }}>
 
                 {/* Coupon */}
                 <div className="cart-coupon-row" style={{ display: 'flex', gap: 8 }}>
