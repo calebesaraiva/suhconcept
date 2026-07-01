@@ -1235,16 +1235,108 @@ body {
 .product-thumbnails::-webkit-scrollbar { height: 3px; }
 .product-thumbnails::-webkit-scrollbar-thumb { background: #333; border-radius: 4px; }
 
+.product-page-shell {
+  overflow-x: clip;
+}
+
+.product-breadcrumb {
+  overflow-x: auto;
+  white-space: nowrap;
+  padding-bottom: 2px;
+  scrollbar-width: none;
+}
+
+.product-breadcrumb::-webkit-scrollbar {
+  display: none;
+}
+
 /* sticky add bar — mobile only */
 .product-sticky-bar { display: none; }
 .product-add-desktop { display: flex; }
 @media (max-width: 767px) {
+  .product-page-shell {
+    padding: 14px 12px 104px !important;
+  }
+
+  .product-hero-grid {
+    grid-template-columns: 1fr !important;
+    gap: 18px !important;
+  }
+
+  .product-gallery-card,
+  .product-info-card {
+    border-radius: 22px !important;
+  }
+
+  .product-floating-badges {
+    top: 12px !important;
+    left: 12px !important;
+    right: 12px !important;
+    gap: 8px !important;
+  }
+
+  .product-wishlist-btn {
+    width: 40px !important;
+    height: 40px !important;
+    border-radius: 12px !important;
+  }
+
+  .product-main-image {
+    aspect-ratio: 1 / 1.08 !important;
+    padding: 0 !important;
+  }
+
+  .product-perks-grid {
+    left: 12px !important;
+    right: 12px !important;
+    bottom: 12px !important;
+    grid-template-columns: 1fr !important;
+    gap: 8px !important;
+  }
+
+  .product-perk-pill {
+    padding: 9px 10px !important;
+    border-radius: 12px !important;
+    font-size: 10.5px !important;
+  }
+
+  .product-thumbnails-row {
+    gap: 8px !important;
+  }
+
+  .product-thumb-btn {
+    width: 68px !important;
+    height: 68px !important;
+    border-radius: 14px !important;
+    padding: 5px !important;
+  }
+
+  .product-info-card {
+    padding: 20px 16px !important;
+  }
+
+  .product-title {
+    font-size: 2rem !important;
+    line-height: 1.06 !important;
+  }
+
   .product-sticky-bar {
     display: block; position: fixed; bottom: 56px; left: 0; right: 0;
     z-index: 45;
     box-shadow: 0 -8px 32px rgba(0,0,0,0.6);
   }
   .product-add-desktop { display: none !important; }
+}
+
+@media (max-width: 420px) {
+  .product-title {
+    font-size: 1.8rem !important;
+  }
+
+  .product-thumb-btn {
+    width: 60px !important;
+    height: 60px !important;
+  }
 }
 
 /* ─── CATEGORY TOOLBAR ───────────────────────────── */

@@ -113,8 +113,8 @@ export default function ProductPage() {
 
   return (
     <>
-      <div style={{ maxWidth: 1280, margin: '0 auto', padding: '20px 16px 110px' }}>
-        <nav className="breadcrumb mb-6">
+      <div className="product-page-shell" style={{ maxWidth: 1280, margin: '0 auto', padding: '20px 16px 110px' }}>
+        <nav className="breadcrumb product-breadcrumb mb-6">
           <Link to="/" className="no-underline">Início</Link>
           <ChevronRight size={12} />
           <Link to={`/categoria/${product.categorySlug}`} className="no-underline capitalize">{product.category}</Link>
@@ -123,6 +123,7 @@ export default function ProductPage() {
         </nav>
 
         <div
+          className="product-hero-grid"
           style={{
             display: 'grid',
             gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))',
@@ -132,6 +133,7 @@ export default function ProductPage() {
         >
           <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
             <div
+              className="product-gallery-card"
               style={{
                 position: 'relative',
                 borderRadius: 28,
@@ -152,7 +154,7 @@ export default function ProductPage() {
                 }}
               />
 
-              <div style={{ position: 'absolute', top: 16, left: 16, right: 16, display: 'flex', justifyContent: 'space-between', gap: 10, zIndex: 2, flexWrap: 'wrap' }}>
+              <div className="product-floating-badges" style={{ position: 'absolute', top: 16, left: 16, right: 16, display: 'flex', justifyContent: 'space-between', gap: 10, zIndex: 2, flexWrap: 'wrap' }}>
                 <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                   {product.isNew && (
                     <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 12px', borderRadius: 999, background: 'rgba(255,45,160,0.16)', border: '1px solid rgba(255,45,160,0.28)', color: '#ffd5eb', fontSize: 11, fontWeight: 800 }}>
@@ -167,6 +169,7 @@ export default function ProductPage() {
                 </div>
                 <button
                   onClick={() => toggleWishlist(product.id)}
+                  className="product-wishlist-btn"
                   style={{ width: 44, height: 44, borderRadius: 14, display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(10,10,10,0.55)', backdropFilter: 'blur(10px)', color: '#fff', cursor: 'pointer' }}
                 >
                   <Heart size={18} fill={isWished ? '#FF2DA0' : 'none'} color={isWished ? '#FF2DA0' : '#fff'} />
@@ -178,6 +181,7 @@ export default function ProductPage() {
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.28 }}
+                className="product-main-image"
                 style={{ aspectRatio: '1 / 1', padding: isPerfumaria ? 38 : 0 }}
               >
                 <img
@@ -191,10 +195,11 @@ export default function ProductPage() {
                 />
               </motion.div>
 
-              <div style={{ position: 'absolute', left: 16, right: 16, bottom: 16, display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 8 }}>
+              <div className="product-perks-grid" style={{ position: 'absolute', left: 16, right: 16, bottom: 16, display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 8 }}>
                 {perks.map((item) => (
                   <div
                     key={item}
+                    className="product-perk-pill"
                     style={{
                       minWidth: 0,
                       padding: '10px 12px',
@@ -214,11 +219,12 @@ export default function ProductPage() {
               </div>
             </div>
 
-            <div className="product-thumbnails" style={{ gap: 10 }}>
+            <div className="product-thumbnails product-thumbnails-row" style={{ gap: 10 }}>
               {gallery.map((img: string, i: number) => (
                 <button
                   key={i}
                   onClick={() => setMainImg(i)}
+                  className="product-thumb-btn"
                   style={{
                     width: 78,
                     height: 78,
@@ -241,6 +247,7 @@ export default function ProductPage() {
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
             <div
+              className="product-info-card"
               style={{
                 padding: '26px 24px',
                 borderRadius: 28,
@@ -261,7 +268,7 @@ export default function ProductPage() {
                 </span>
               </div>
 
-              <h1 className="text-2xl md:text-4xl font-black text-white mb-3 leading-tight">{product.name}</h1>
+              <h1 className="product-title text-2xl md:text-4xl font-black text-white mb-3 leading-tight">{product.name}</h1>
 
               <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginBottom: 18 }}>
                 <div className="stars" style={{ display: 'flex', gap: 4 }}>
