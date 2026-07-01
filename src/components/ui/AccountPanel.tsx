@@ -125,6 +125,44 @@ function getOrderStatusMeta(status: string, deliveryMethod?: string) {
   return map[status] || map.pendente;
 }
 
+function getOrderProgressSteps(status: string, deliveryMethod?: string) {
+  const pickup = deliveryMethod === 'pickup';
+  const baseSteps = [
+    { key: 'aguardando_pagamento', label: 'Pagamento' },
+    { key: 'pago', label: 'Pago' },
+    { key: 'em_preparo', label: 'Preparação' },
+    { key: 'enviado', label: pickup ? 'Retirada' : 'Despacho' },
+    { key: pickup ? 'entregue' : 'saiu_para_entrega', label: pickup ? 'Concluído' : 'Em rota' },
+  ];
+
+  if (status === 'cancelado') {
+    return baseSteps.map((step, index) => ({
+      ...step,
+      state: index === 0 ? 'current' : 'upcoming',
+    }));
+  }
+
+  const orderFlow = pickup
+    ? ['aguardando_pagamento', 'pago', 'em_preparo', 'enviado', 'entregue']
+    : ['aguardando_pagamento', 'pago', 'em_preparo', 'enviado', 'saiu_para_entrega', 'entregue'];
+
+  const currentIndex = Math.max(orderFlow.indexOf(status), 0);
+
+  return baseSteps.map((step) => {
+    const stepIndex = orderFlow.indexOf(step.key);
+    if (stepIndex === -1) {
+      return { ...step, state: 'upcoming' as const };
+    }
+    if (currentIndex > stepIndex) {
+      return { ...step, state: 'done' as const };
+    }
+    if (currentIndex === stepIndex) {
+      return { ...step, state: 'current' as const };
+    }
+    return { ...step, state: 'upcoming' as const };
+  });
+}
+
 export default function AccountPanel({ compact = false, onAuthSuccess, redirectTo }: Props) {
   const { showToast } = useStore();
   const navigate = useNavigate();
@@ -553,6 +591,7 @@ export default function AccountPanel({ compact = false, onAuthSuccess, redirectT
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
               {orders.slice(0, compact ? 4 : 8).map((order) => {
                 const statusMeta = getOrderStatusMeta(order.status, order.deliveryMethod);
+                const progressSteps = getOrderProgressSteps(order.status, order.deliveryMethod);
                 return (
                 <div key={order.id} style={{ padding: '14px 16px', borderRadius: 14, background: '#0d0d0f', border: '1px solid rgba(255,255,255,0.06)' }}>
                   <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, marginBottom: 10 }}>
@@ -579,6 +618,48 @@ export default function AccountPanel({ compact = false, onAuthSuccess, redirectT
                   <p style={{ fontSize: 11.5, color: '#9ca3af', lineHeight: 1.5, marginBottom: 8 }}>
                     {statusMeta.description}
                   </p>
+                  <div style={{ marginBottom: 10 }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: `repeat(${progressSteps.length}, minmax(0, 1fr))`, gap: 8, alignItems: 'start' }}>
+                      {progressSteps.map((step) => {
+                        const isDone = step.state === 'done';
+                        const isCurrent = step.state === 'current';
+                        return (
+                          <div key={step.key} style={{ minWidth: 0 }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
+                              <span
+                                style={{
+                                  width: 10,
+                                  height: 10,
+                                  borderRadius: '50%',
+                                  flexShrink: 0,
+                                  background: isDone || isCurrent ? statusMeta.color : 'rgba(255,255,255,0.14)',
+                                  boxShadow: isCurrent ? `0 0 0 4px ${statusMeta.background}` : 'none',
+                                }}
+                              />
+                              <div
+                                style={{
+                                  height: 3,
+                                  flex: 1,
+                                  borderRadius: 999,
+                                  background: isDone ? statusMeta.color : 'rgba(255,255,255,0.08)',
+                                }}
+                              />
+                            </div>
+                            <p
+                              style={{
+                                fontSize: 10.5,
+                                lineHeight: 1.35,
+                                color: isDone || isCurrent ? '#e5e7eb' : '#6b7280',
+                                fontWeight: isCurrent ? 800 : 600,
+                              }}
+                            >
+                              {step.label}
+                            </p>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
                   <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, fontSize: 11.5, color: '#7d7d84', flexWrap: 'wrap' }}>
                     <span>{order.paymentMethod}</span>
                     <span>R$ {order.total.toFixed(2).replace('.', ',')}</span>
