@@ -1,5 +1,6 @@
 import { motion, AnimatePresence } from 'framer-motion';
 import { Link, useLocation } from 'react-router-dom';
+import { useEffect, useState } from 'react';
 import {
   X,
   ChevronRight,
@@ -13,6 +14,7 @@ import {
   ShoppingBag,
 } from 'lucide-react';
 import { useStorePricingSettings } from '../../lib/storePricing';
+import { getStoredUser, SESSION_EVENT, type ApiUser } from '../../lib/api';
 
 interface Props { open: boolean; onClose: () => void; onAccountOpen: () => void; }
 
@@ -35,6 +37,17 @@ const accountLinks = [
 export default function MobileDrawer({ open, onClose, onAccountOpen }: Props) {
   const { pathname } = useLocation();
   const settings = useStorePricingSettings();
+  const [currentUser, setCurrentUser] = useState<ApiUser | null>(() => getStoredUser());
+
+  useEffect(() => {
+    const syncUser = () => setCurrentUser(getStoredUser());
+    window.addEventListener(SESSION_EVENT, syncUser as EventListener);
+    window.addEventListener('storage', syncUser);
+    return () => {
+      window.removeEventListener(SESSION_EVENT, syncUser as EventListener);
+      window.removeEventListener('storage', syncUser);
+    };
+  }, []);
 
   const itemVariants = {
     hidden: { opacity: 0, y: 14 },
@@ -151,7 +164,9 @@ export default function MobileDrawer({ open, onClose, onAccountOpen }: Props) {
                               <div className="drawer-account-icon">
                                 <Icon size={14} />
                               </div>
-                              <span style={{ fontSize: 13.5, fontWeight: 700 }}>Entrar / Cadastrar</span>
+                              <span style={{ fontSize: 13.5, fontWeight: 700 }}>
+                                {currentUser ? `Minha conta · ${currentUser.name.split(' ')[0]}` : 'Entrar / Cadastrar'}
+                              </span>
                             </div>
                             <ArrowUpRight size={14} className="drawer-account-arrow" />
                           </button>

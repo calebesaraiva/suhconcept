@@ -1,10 +1,11 @@
-import { useState, useRef, useMemo } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Search, Heart, ShoppingBag, User, X } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useStore } from '../../store/useStore';
 import { getProductPricing, useStorePricingSettings } from '../../lib/storePricing';
 import { useProducts } from '../../lib/useApi';
+import { getStoredUser, SESSION_EVENT, type ApiUser } from '../../lib/api';
 
 interface Props { onMenuOpen: () => void; onCartOpen: () => void; onAccountOpen: () => void; }
 
@@ -12,12 +13,24 @@ export default function Header({ onMenuOpen, onCartOpen, onAccountOpen }: Props)
   const { cart, wishlist } = useStore();
   const [search, setSearch] = useState('');
   const [focused, setFocused] = useState(false);
+  const [currentUser, setCurrentUser] = useState<ApiUser | null>(() => getStoredUser());
   const navigate = useNavigate();
   const inputRef = useRef<HTMLInputElement>(null);
   const cartCount = cart.reduce((a, i) => a + i.quantity, 0);
   const pricingSettings = useStorePricingSettings();
   const { data: searchProductsData } = useProducts({ limit: '100' });
   const searchProducts = useMemo(() => searchProductsData?.products ?? [], [searchProductsData]);
+  const accountLabel = currentUser ? `Olá, ${currentUser.name.split(' ')[0]}` : 'Entrar';
+
+  useEffect(() => {
+    const syncUser = () => setCurrentUser(getStoredUser());
+    window.addEventListener(SESSION_EVENT, syncUser as EventListener);
+    window.addEventListener('storage', syncUser);
+    return () => {
+      window.removeEventListener(SESSION_EVENT, syncUser as EventListener);
+      window.removeEventListener('storage', syncUser);
+    };
+  }, []);
 
   const suggestions = useMemo(() => {
     if (search.length <= 1) return [];
@@ -132,7 +145,7 @@ export default function Header({ onMenuOpen, onCartOpen, onAccountOpen }: Props)
           {/* Entrar */}
           <button onClick={onAccountOpen} className="hdr-entrar hdr-desktop-only">
             <User size={14} />
-            <span>Entrar</span>
+            <span>{accountLabel}</span>
           </button>
 
           {/* Favoritos */}

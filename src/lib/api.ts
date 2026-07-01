@@ -1,6 +1,7 @@
 const BASE = '/api';
 const TOKEN_KEY = 'suh_token';
 const USER_KEY = 'suh_user';
+export const SESSION_EVENT = 'suh:session-changed';
 
 function getToken() {
   return localStorage.getItem(TOKEN_KEY);
@@ -22,11 +23,13 @@ export function getStoredUser(): ApiUser | null {
 export function storeSession(token: string, user: ApiUser) {
   localStorage.setItem(TOKEN_KEY, token);
   localStorage.setItem(USER_KEY, JSON.stringify(user));
+  window.dispatchEvent(new CustomEvent(SESSION_EVENT, { detail: { user } }));
 }
 
 export function clearSession() {
   localStorage.removeItem(TOKEN_KEY);
   localStorage.removeItem(USER_KEY);
+  window.dispatchEvent(new CustomEvent(SESSION_EVENT, { detail: { user: null } }));
 }
 
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
