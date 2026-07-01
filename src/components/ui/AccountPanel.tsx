@@ -171,11 +171,11 @@ export default function AccountPanel({ compact = false, onAuthSuccess, redirectT
 
   useEffect(() => {
     if (!currentUser) {
-      setOrders([]);
       return;
     }
 
     let active = true;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setOrdersLoading(true);
 
     api.orders.mine()

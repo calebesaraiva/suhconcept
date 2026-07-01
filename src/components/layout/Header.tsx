@@ -17,7 +17,7 @@ export default function Header({ onMenuOpen, onCartOpen, onAccountOpen }: Props)
   const cartCount = cart.reduce((a, i) => a + i.quantity, 0);
   const pricingSettings = useStorePricingSettings();
   const { data: searchProductsData } = useProducts({ limit: '100' });
-  const searchProducts = searchProductsData?.products ?? [];
+  const searchProducts = useMemo(() => searchProductsData?.products ?? [], [searchProductsData]);
 
   const suggestions = useMemo(() => {
     if (search.length <= 1) return [];

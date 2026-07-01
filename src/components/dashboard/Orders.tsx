@@ -27,6 +27,129 @@ const card: React.CSSProperties = {
   border: '1px solid rgba(255,255,255,0.06)',
 };
 
+type QueueOrder = ApiOrder;
+
+function QueueColumn({
+  title,
+  subtitle,
+  color,
+  orders,
+  emptyText,
+  onSelect,
+  onAdvance,
+  updatingStatus,
+}: {
+  title: string;
+  subtitle: string;
+  color: string;
+  orders: QueueOrder[];
+  emptyText: string;
+  onSelect: (order: QueueOrder) => void;
+  onAdvance: (orderId: string, newStatus: string) => void;
+  updatingStatus: boolean;
+}) {
+  const getOperationalLabel = (order: QueueOrder) =>
+    order.deliveryMethod === 'pickup' ? 'Retirada' : 'Entrega';
+
+  const getNextActions = (order: QueueOrder) => {
+    const pickup = order.deliveryMethod === 'pickup';
+
+    if (order.status === 'pago') {
+      return [{ key: 'em_preparo', label: 'Iniciar separação' }];
+    }
+
+    if (order.status === 'em_preparo') {
+      return [{ key: 'enviado', label: pickup ? 'Pronto para retirada' : 'Pronto para envio' }];
+    }
+
+    if (order.status === 'enviado') {
+      return pickup
+        ? [{ key: 'entregue', label: 'Marcar como retirado' }]
+        : [{ key: 'saiu_para_entrega', label: 'Saiu para entrega' }];
+    }
+
+    if (order.status === 'saiu_para_entrega') {
+      return [{ key: 'entregue', label: 'Marcar como entregue' }];
+    }
+
+    return [];
+  };
+
+  return (
+    <div style={{ ...card, padding: 18, display: 'flex', flexDirection: 'column', gap: 14 }}>
+      <div>
+        <p style={{ fontSize: 11, fontWeight: 800, color, letterSpacing: '0.12em', textTransform: 'uppercase', marginBottom: 6 }}>{title}</p>
+        <p style={{ fontSize: 12, color: '#888', lineHeight: 1.5 }}>{subtitle}</p>
+      </div>
+
+      {orders.length === 0 ? (
+        <div style={{ padding: '16px 14px', borderRadius: 14, background: '#0d0d0d', border: '1px solid rgba(255,255,255,0.05)' }}>
+          <p style={{ fontSize: 12, color: '#666' }}>{emptyText}</p>
+        </div>
+      ) : (
+        orders.slice(0, 6).map((order) => {
+          const actions = getNextActions(order);
+          const addressMeta = getAddressMeta(order);
+          return (
+            <div key={order.id} style={{ padding: '14px', borderRadius: 14, background: '#0d0d0d', border: '1px solid rgba(255,255,255,0.05)', display: 'flex', flexDirection: 'column', gap: 10 }}>
+              <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10 }}>
+                <div>
+                  <p style={{ fontSize: 12, color: '#a855f7', fontWeight: 800, marginBottom: 4 }}>#{order.id.slice(-8).toUpperCase()}</p>
+                  <p style={{ fontSize: 13.5, color: '#fff', fontWeight: 800, marginBottom: 3 }}>{order.customerName}</p>
+                  <p style={{ fontSize: 11.5, color: '#888' }}>{order.items.map((item) => `${item.productName} x${item.quantity}`).join(' · ')}</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => onSelect(order)}
+                  style={{ width: 34, height: 34, borderRadius: 10, border: '1px solid rgba(255,255,255,0.08)', background: 'transparent', color: '#999', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0 }}
+                >
+                  <Eye size={14} />
+                </button>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 10, alignItems: 'center' }}>
+                <div>
+                  <p style={{ fontSize: 10.5, color: '#666', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 3 }}>
+                    {getOperationalLabel(order)}
+                  </p>
+                  <p style={{ fontSize: 11.5, color: '#cfcfd4', lineHeight: 1.5 }}>
+                    {order.deliveryMethod === 'pickup' ? 'Cliente vai retirar na loja' : (addressMeta.addressLines.join(' · ') || 'Entrega a domicílio')}
+                  </p>
+                </div>
+                <strong style={{ fontSize: 14, color: '#fff' }}>R$ {order.total.toFixed(2).replace('.', ',')}</strong>
+              </div>
+
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                {actions.map((action) => (
+                  <button
+                    key={action.key}
+                    type="button"
+                    disabled={updatingStatus}
+                    onClick={() => onAdvance(order.id, action.key)}
+                    style={{
+                      padding: '9px 12px',
+                      borderRadius: 10,
+                      border: '1px solid rgba(168,85,247,0.25)',
+                      background: 'rgba(168,85,247,0.08)',
+                      color: '#e9d5ff',
+                      fontSize: 11.5,
+                      fontWeight: 800,
+                      cursor: 'pointer',
+                      fontFamily: 'inherit',
+                    }}
+                  >
+                    {action.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          );
+        })
+      )}
+    </div>
+  );
+}
+
 function getAddressMeta(order: ApiOrder) {
   const address = order.address && typeof order.address === 'object'
     ? order.address as Record<string, unknown>
@@ -98,9 +221,6 @@ export default function Orders({ role }: { role: string }) {
   const queueInProgress = orders.filter((order) => order.status === 'em_preparo');
   const queueReady = orders.filter((order) => order.status === 'enviado');
 
-  const getOperationalLabel = (order: ApiOrder) =>
-    order.deliveryMethod === 'pickup' ? 'Retirada' : 'Entrega';
-
   const getNextActions = (order: ApiOrder) => {
     const pickup = order.deliveryMethod === 'pickup';
 
@@ -124,92 +244,6 @@ export default function Orders({ role }: { role: string }) {
 
     return [];
   };
-
-  const QueueColumn = ({
-    title,
-    subtitle,
-    color,
-    orders: queueOrders,
-    emptyText,
-  }: {
-    title: string;
-    subtitle: string;
-    color: string;
-    orders: ApiOrder[];
-    emptyText: string;
-  }) => (
-    <div style={{ ...card, padding: 18, display: 'flex', flexDirection: 'column', gap: 14 }}>
-      <div>
-        <p style={{ fontSize: 11, fontWeight: 800, color, letterSpacing: '0.12em', textTransform: 'uppercase', marginBottom: 6 }}>{title}</p>
-        <p style={{ fontSize: 12, color: '#888', lineHeight: 1.5 }}>{subtitle}</p>
-      </div>
-
-      {queueOrders.length === 0 ? (
-        <div style={{ padding: '16px 14px', borderRadius: 14, background: '#0d0d0d', border: '1px solid rgba(255,255,255,0.05)' }}>
-          <p style={{ fontSize: 12, color: '#666' }}>{emptyText}</p>
-        </div>
-      ) : (
-        queueOrders.slice(0, 6).map((order) => {
-          const actions = getNextActions(order);
-          const addressMeta = getAddressMeta(order);
-          return (
-            <div key={order.id} style={{ padding: '14px', borderRadius: 14, background: '#0d0d0d', border: '1px solid rgba(255,255,255,0.05)', display: 'flex', flexDirection: 'column', gap: 10 }}>
-              <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10 }}>
-                <div>
-                  <p style={{ fontSize: 12, color: '#a855f7', fontWeight: 800, marginBottom: 4 }}>#{order.id.slice(-8).toUpperCase()}</p>
-                  <p style={{ fontSize: 13.5, color: '#fff', fontWeight: 800, marginBottom: 3 }}>{order.customerName}</p>
-                  <p style={{ fontSize: 11.5, color: '#888' }}>{order.items.map((item) => `${item.productName} x${item.quantity}`).join(' · ')}</p>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setSelected(order)}
-                  style={{ width: 34, height: 34, borderRadius: 10, border: '1px solid rgba(255,255,255,0.08)', background: 'transparent', color: '#999', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0 }}
-                >
-                  <Eye size={14} />
-                </button>
-              </div>
-
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 10, alignItems: 'center' }}>
-                <div>
-                  <p style={{ fontSize: 10.5, color: '#666', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 3 }}>
-                    {getOperationalLabel(order)}
-                  </p>
-                  <p style={{ fontSize: 11.5, color: '#cfcfd4', lineHeight: 1.5 }}>
-                    {order.deliveryMethod === 'pickup' ? 'Cliente vai retirar na loja' : (addressMeta.addressLines.join(' · ') || 'Entrega a domicílio')}
-                  </p>
-                </div>
-                <strong style={{ fontSize: 14, color: '#fff' }}>R$ {order.total.toFixed(2).replace('.', ',')}</strong>
-              </div>
-
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-                {actions.map((action) => (
-                  <button
-                    key={action.key}
-                    type="button"
-                    disabled={updatingStatus}
-                    onClick={() => handleUpdateStatus(order.id, action.key)}
-                    style={{
-                      padding: '9px 12px',
-                      borderRadius: 10,
-                      border: '1px solid rgba(168,85,247,0.25)',
-                      background: 'rgba(168,85,247,0.08)',
-                      color: '#e9d5ff',
-                      fontSize: 11.5,
-                      fontWeight: 800,
-                      cursor: 'pointer',
-                      fontFamily: 'inherit',
-                    }}
-                  >
-                    {action.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-          );
-        })
-      )}
-    </div>
-  );
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
@@ -290,6 +324,9 @@ export default function Orders({ role }: { role: string }) {
           color="#22c55e"
           orders={queueToSeparate}
           emptyText="Nenhum pedido pago aguardando separação agora."
+          onSelect={setSelected}
+          onAdvance={handleUpdateStatus}
+          updatingStatus={updatingStatus}
         />
         <QueueColumn
           title="Em separação"
@@ -297,6 +334,9 @@ export default function Orders({ role }: { role: string }) {
           color="#a855f7"
           orders={queueInProgress}
           emptyText="Nenhum pedido em separação no momento."
+          onSelect={setSelected}
+          onAdvance={handleUpdateStatus}
+          updatingStatus={updatingStatus}
         />
         <QueueColumn
           title="Prontos"
@@ -304,6 +344,9 @@ export default function Orders({ role }: { role: string }) {
           color="#3b82f6"
           orders={queueReady}
           emptyText="Nenhum pedido pronto no momento."
+          onSelect={setSelected}
+          onAdvance={handleUpdateStatus}
+          updatingStatus={updatingStatus}
         />
         </div>
       </div>

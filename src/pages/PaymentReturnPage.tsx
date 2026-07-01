@@ -36,14 +36,13 @@ export default function PaymentReturnPage() {
   const orderId = params.get('order') || '';
   const [state, setState] = useState<PaymentState>({
     order: null,
-    status: 'aguardando_pagamento',
-    error: '',
-    loading: true,
+    status: orderId ? 'aguardando_pagamento' : 'cancelado',
+    error: orderId ? '' : 'Pedido não informado no retorno do pagamento.',
+    loading: Boolean(orderId),
   });
 
   useEffect(() => {
     if (!orderId) {
-      setState({ order: null, status: 'cancelado', error: 'Pedido não informado no retorno do pagamento.', loading: false });
       return;
     }
 

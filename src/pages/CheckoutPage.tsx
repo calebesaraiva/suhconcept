@@ -113,7 +113,6 @@ export default function CheckoutPage() {
   useEffect(() => {
     const token = getStoredToken();
     if (!token) {
-      setCheckingSession(false);
       return;
     }
 
@@ -141,8 +140,11 @@ export default function CheckoutPage() {
     };
   }, []);
 
+  const selectedServiceCode = shippingQuote?.selected.serviceCode;
+
   useEffect(() => {
     if (deliveryMethod !== 'delivery') {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setShippingQuote(null);
       setShippingError('');
       setShippingLoading(false);
@@ -163,7 +165,7 @@ export default function CheckoutPage() {
         cepDestino: cepDigits,
         subtotal: subtotalBeforeCoupon,
         itemCount,
-        serviceCode: shippingQuote?.selected.serviceCode,
+        serviceCode: selectedServiceCode,
         freeShipping: freeShipPromo || subtotalBeforeCoupon >= freeShipThreshold || couponFreeShipping,
         cidade: form.cidade,
         estado: form.estado,
@@ -187,12 +189,13 @@ export default function CheckoutPage() {
       cancelled = true;
       window.clearTimeout(timer);
     };
-  }, [cepDigits, deliveryMethod, subtotalBeforeCoupon, itemCount, freeShipPromo, freeShipThreshold, couponFreeShipping, form.cidade, form.estado]);
+  }, [cepDigits, deliveryMethod, subtotalBeforeCoupon, itemCount, freeShipPromo, freeShipThreshold, couponFreeShipping, form.cidade, form.estado, selectedServiceCode]);
 
   useEffect(() => {
     if (deliveryMethod !== 'delivery' || cepDigits.length !== 8) return;
 
     let cancelled = false;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setCepLookupLoading(true);
     const timer = window.setTimeout(() => {
       api.shipping.lookupCep(cepDigits)
@@ -337,7 +340,7 @@ export default function CheckoutPage() {
 
       if (payment?.provider === 'pagbank' && payment.checkoutUrl) {
         clearCart();
-        window.location.href = payment.checkoutUrl;
+        window.location.assign(payment.checkoutUrl);
         return;
       }
 

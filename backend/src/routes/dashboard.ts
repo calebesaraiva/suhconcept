@@ -73,7 +73,7 @@ async function syncPagBankOrderStatusIfNeeded(order: {
   const providerOrderId = getStringValue(payment.providerOrderId) || (storedChargeId.startsWith('ORDE_') ? storedChargeId : '');
   const checkoutId = getStringValue(payment.checkoutId);
 
-  let resolvedStatus = getStringValue(payment.status);
+  let resolvedStatus: string;
   let resolvedChargeId = storedChargeId;
   let paidAt = getStringValue(payment.paidAt);
   let resolvedProviderOrderId = providerOrderId;
