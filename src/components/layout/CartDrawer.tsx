@@ -24,6 +24,11 @@ export default function CartDrawer({ open, onClose }: Props) {
   const progress  = Math.min((subtotal / settings.freeShipThreshold) * 100, 100);
   const pixSaving = subtotalBase - pixBase;
   const cashback  = subtotal * CASHBACK_RATE;
+  const formatMoney = (value: number) => `R$ ${value.toFixed(2).replace('.', ',')}`;
+  const formatCep = (value: string) => {
+    const digits = value.replace(/\D/g, '').slice(0, 8);
+    return digits.length > 5 ? `${digits.slice(0, 5)}-${digits.slice(5)}` : digits;
+  };
   const [cep, setCep] = useState('');
   const [shippingQuote, setShippingQuote] = useState<ShippingQuoteResponse | null>(null);
   const [shippingLoading, setShippingLoading] = useState(false);
@@ -260,16 +265,15 @@ export default function CartDrawer({ open, onClose }: Props) {
                     <Tag size={13} style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: '#444', pointerEvents: 'none' }} />
                     <input
                       placeholder="Cupom de desconto"
+                      disabled
                       style={{ width: '100%', background: '#141414', border: '1px solid rgba(255,255,255,0.09)', borderRadius: 8, padding: '10px 12px 10px 34px', color: '#fff', fontSize: 13, fontFamily: 'inherit', outline: 'none' }}
                       onFocus={e => (e.currentTarget.style.borderColor = 'rgba(255,255,255,0.2)')}
                       onBlur={e => (e.currentTarget.style.borderColor = 'rgba(255,255,255,0.09)')}
                     />
                   </div>
-                  <button style={{ padding: '0 16px', borderRadius: 8, border: '1px solid rgba(255,255,255,0.12)', background: 'transparent', color: '#aaa', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', transition: 'all 0.2s', whiteSpace: 'nowrap' }}
-                    onMouseEnter={e => { (e.currentTarget as HTMLElement).style.borderColor = 'rgba(255,255,255,0.3)'; (e.currentTarget as HTMLElement).style.color = '#fff'; }}
-                    onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = 'rgba(255,255,255,0.12)'; (e.currentTarget as HTMLElement).style.color = '#aaa'; }}>
-                    APLICAR
-                  </button>
+                  <div style={{ minWidth: 118, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 14px', borderRadius: 8, border: '1px solid rgba(168,85,247,0.16)', background: 'rgba(168,85,247,0.08)', color: '#d5b7ff', fontSize: 11, fontWeight: 700, textAlign: 'center', lineHeight: 1.3 }}>
+                    Aplicar no checkout
+                  </div>
                 </div>
 
                 <div className="cart-shipping-card" style={{ display: 'flex', flexDirection: 'column', gap: 12, padding: '16px', borderRadius: 16, background: 'linear-gradient(180deg, rgba(20,20,20,0.98), rgba(15,15,15,0.98))', border: `1px solid ${shippingError ? 'rgba(255,184,0,0.24)' : shippingQuote || freeShip ? 'rgba(34,197,94,0.18)' : 'rgba(255,255,255,0.08)'}`, boxShadow: shippingQuote || freeShip ? '0 18px 38px rgba(34,197,94,0.08)' : '0 18px 38px rgba(0,0,0,0.24)' }}>
@@ -304,7 +308,7 @@ export default function CartDrawer({ open, onClose }: Props) {
                     <MapPin size={15} style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: '#6b7280', pointerEvents: 'none' }} />
                     <input
                       value={cep}
-                      onChange={(event) => setCep(event.target.value)}
+                      onChange={(event) => setCep(formatCep(event.target.value))}
                       placeholder="Digite seu CEP"
                       inputMode="numeric"
                       maxLength={9}
@@ -338,12 +342,12 @@ export default function CartDrawer({ open, onClose }: Props) {
                 <div className="cart-summary-card" style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: '14px 16px', borderRadius: 10, background: '#111', border: '1px solid rgba(255,255,255,0.06)' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: '#666' }}>
                     <span>Subtotal ({count} {count === 1 ? 'item' : 'itens'})</span>
-                    <span style={{ color: '#aaa' }}>R$ {subtotalBase.toFixed(2).replace('.', ',')}</span>
+                    <span style={{ color: '#aaa' }}>{formatMoney(subtotalBase)}</span>
                   </div>
                   {subtotalCombo > 0 && (
                     <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: '#FFB800' }}>
                       <span>Combo promocional</span>
-                      <span>– R$ {subtotalCombo.toFixed(2).replace('.', ',')}</span>
+                      <span>– {formatMoney(subtotalCombo)}</span>
                     </div>
                   )}
                   {pixSaving > 0 && (
@@ -351,30 +355,26 @@ export default function CartDrawer({ open, onClose }: Props) {
                       <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
                         <Zap size={11} /> Desconto PIX ({settings.pixDiscount}%)
                       </span>
-                      <span>– R$ {pixSaving.toFixed(2).replace('.', ',')}</span>
+                      <span>– {formatMoney(pixSaving)}</span>
                     </div>
                   )}
-                  {/* Cashback */}
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: '#a855f7' }}>
-                    <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-                      <Coins size={11} /> Cashback (5%)
-                    </span>
-                    <span>+ R$ {cashback.toFixed(2).replace('.', ',')}</span>
-                  </div>
                   <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: '#555' }}>
                     <span>Frete</span>
                     <span style={{ color: freeShip ? '#22C55E' : '#aaa', fontWeight: freeShip ? 800 : 500 }}>
-                      {freeShip ? 'Grátis 🎉' : shippingQuote ? `R$ ${shippingQuote.selected.price.toFixed(2).replace('.', ',')}` : 'Calcular agora'}
+                      {freeShip ? 'Grátis 🎉' : shippingQuote ? formatMoney(shippingQuote.selected.price) : 'Calcular agora'}
                     </span>
                   </div>
                   <div style={{ height: 1, background: 'rgba(255,255,255,0.06)', margin: '2px 0' }} />
-                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <span style={{ fontWeight: 900, fontSize: 14, color: '#fff' }}>Total</span>
-                    <span style={{ fontWeight: 900, fontSize: 18, color: '#fff' }}>R$ {totalWithShipping.toFixed(2).replace('.', ',')}</span>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 12 }}>
+                    <div>
+                      <span style={{ display: 'block', fontWeight: 900, fontSize: 14, color: '#fff', marginBottom: 3 }}>Total</span>
+                      <span style={{ display: 'block', fontSize: 11, color: '#6d6d74' }}>Pagamento seguro no checkout oficial</span>
+                    </div>
+                    <span style={{ fontWeight: 900, fontSize: 22, color: '#fff' }}>{formatMoney(totalWithShipping)}</span>
                   </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11.5 }}>
-                    <span style={{ color: '#444' }}>
-                      ou <strong style={{ color: '#22C55E' }}>R$ {pixTotal.toFixed(2).replace('.', ',')}</strong> no PIX
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 11.5, gap: 10 }}>
+                    <span style={{ color: '#6d6d74', lineHeight: 1.45 }}>
+                      ou <strong style={{ color: '#22C55E' }}>{formatMoney(pixTotal)}</strong> no PIX
                     </span>
                     <span style={{ background: 'rgba(34,197,94,0.1)', color: '#22C55E', padding: '1px 7px', borderRadius: 99, fontSize: 10, fontWeight: 800, border: '1px solid rgba(34,197,94,0.2)' }}>
                       {settings.pixDiscount}% OFF

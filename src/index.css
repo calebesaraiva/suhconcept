@@ -1356,6 +1356,12 @@ body {
     justify-content: center;
   }
 
+  .cart-coupon-row > div:last-child {
+    width: 100%;
+    min-width: 0 !important;
+    height: 44px;
+  }
+
   .cart-shipping-card {
     gap: 14px !important;
     padding: 14px !important;
@@ -1386,6 +1392,10 @@ body {
     padding: 14px !important;
   }
 
+  .cart-summary-card > div {
+    min-width: 0;
+  }
+
   .cart-cashback-banner {
     align-items: flex-start !important;
     padding: 12px !important;
@@ -1409,6 +1419,11 @@ body {
   .cart-drawer-progress p,
   .cart-shipping-card p,
   .cart-summary-card p {
+    word-break: break-word;
+  }
+
+  .cart-summary-card strong,
+  .cart-summary-card span {
     word-break: break-word;
   }
 
