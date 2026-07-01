@@ -115,6 +115,18 @@ export interface ApiOrder {
   status: string; paymentMethod: string; deliveryMethod: string;
   address?: Record<string, unknown>; cashback: number;
   couponCode?: string; notes?: string; createdAt: string; updatedAt?: string;
+  history?: ApiOrderStatusHistory[];
+}
+
+export interface ApiOrderStatusHistory {
+  id: string;
+  status: string;
+  label: string;
+  description: string;
+  actorName?: string | null;
+  actorRole?: string | null;
+  source: string;
+  createdAt: string;
 }
 
 export interface OrderShippingInfo {

@@ -7,6 +7,9 @@ import {
   mapPagBankStatus,
   validatePagBankWebhookSignature,
 } from '../lib/pagbank';
+import { appendOrderStatusHistoryIfChanged } from '../lib/orderStatus';
+import { sendOrderStatusEmail } from '../lib/mailer';
+import { getStoreSettingsMap } from '../lib/storeSettings';
 
 const router = Router();
 
@@ -120,15 +123,26 @@ router.post('/pagbank/webhook', async (req, res) => {
       lastWebhookEventId: externalId || getStringValue(payment.chargeId),
     };
 
-    await prisma.order.update({
-      where: { id: orderId },
-      data: {
-        status: mapPagBankStatus(resolvedStatus),
-        address: {
-          ...address,
-          payment: paymentMeta,
+    const nextStatus = mapPagBankStatus(resolvedStatus);
+    await prisma.$transaction(async (tx) => {
+      await tx.order.update({
+        where: { id: orderId },
+        data: {
+          status: nextStatus,
+          address: {
+            ...address,
+            payment: paymentMeta,
+          },
         },
-      },
+      });
+
+      await appendOrderStatusHistoryIfChanged(tx, {
+        orderId,
+        previousStatus: order.status,
+        nextStatus,
+        deliveryMethod: order.deliveryMethod,
+        source: 'pagbank-webhook',
+      });
     });
 
     return res.json({ ok: true });
@@ -170,17 +184,57 @@ router.get('/pagbank/orders/:orderId/status', async (req, res) => {
       paidAt: providerStatus.paidAt || getStringValue(payment.paidAt),
     };
 
-    const updatedOrder = await prisma.order.update({
-      where: { id: order.id },
-      data: {
-        status: internalStatus,
-        address: {
-          ...address,
-          payment: nextPaymentMeta,
+    const previousStatus = order.status;
+    const updatedOrder = await prisma.$transaction(async (tx) => {
+      const nextOrder = await tx.order.update({
+        where: { id: order.id },
+        data: {
+          status: internalStatus,
+          address: {
+            ...address,
+            payment: nextPaymentMeta,
+          },
         },
-      },
-      include: { items: true },
+        include: {
+          items: true,
+          history: { orderBy: { createdAt: 'asc' } },
+        },
+      });
+
+      await appendOrderStatusHistoryIfChanged(tx, {
+        orderId: order.id,
+        previousStatus,
+        nextStatus: internalStatus,
+        deliveryMethod: order.deliveryMethod,
+        source: 'pagbank-status-check',
+      });
+
+      return nextOrder;
     });
+
+    if (previousStatus !== internalStatus && ['pago', 'cancelado'].includes(internalStatus)) {
+      try {
+        const settings = await getStoreSettingsMap(prisma);
+        await sendOrderStatusEmail(prisma, {
+          orderId: updatedOrder.id,
+          customerName: updatedOrder.customerName,
+          customerEmail: updatedOrder.customerEmail,
+          total: updatedOrder.total,
+          status: internalStatus,
+          deliveryMethod: updatedOrder.deliveryMethod,
+          items: updatedOrder.items.map((item) => ({
+            productName: item.productName,
+            quantity: item.quantity,
+            size: item.size,
+            color: item.color,
+          })),
+          address,
+          storeName: settings.smtpFromName || settings.storeName || 'Loja',
+        });
+      } catch (error) {
+        console.error('Erro ao enviar e-mail após confirmação PagBank:', error);
+      }
+    }
 
     return res.json({
       order: updatedOrder,

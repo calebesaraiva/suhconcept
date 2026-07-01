@@ -169,6 +169,32 @@ function getAddressMeta(order: ApiOrder) {
   };
 }
 
+function getOperationalChecklist(order: ApiOrder) {
+  const pickup = order.deliveryMethod === 'pickup';
+  return [
+    {
+      key: 'pago',
+      label: 'Pagamento confirmado',
+      done: ['pago', 'em_preparo', 'enviado', 'saiu_para_entrega', 'entregue'].includes(order.status),
+    },
+    {
+      key: 'em_preparo',
+      label: 'Separação iniciada',
+      done: ['em_preparo', 'enviado', 'saiu_para_entrega', 'entregue'].includes(order.status),
+    },
+    {
+      key: 'enviado',
+      label: pickup ? 'Pedido pronto para retirada' : 'Pedido pronto para envio',
+      done: ['enviado', 'saiu_para_entrega', 'entregue'].includes(order.status),
+    },
+    {
+      key: pickup ? 'entregue' : 'saiu_para_entrega',
+      label: pickup ? 'Cliente retirou' : 'Saiu para entrega',
+      done: pickup ? order.status === 'entregue' : ['saiu_para_entrega', 'entregue'].includes(order.status),
+    },
+  ];
+}
+
 export default function Orders({ role }: { role: string }) {
   const { showToast } = useStore();
   const [search, setSearch] = useState('');
@@ -194,7 +220,7 @@ export default function Orders({ role }: { role: string }) {
     try {
       const updatedOrder = await api.dashboard.updateOrderStatus(orderId, newStatus);
       refetch();
-      if (selected?.id === orderId) setSelected(prev => prev ? { ...prev, status: newStatus } : null);
+      if (selected?.id === orderId) setSelected(updatedOrder);
 
       const notification = (updatedOrder as ApiOrder & { notification?: { sent: boolean; reason?: string } | null }).notification;
       if (newStatus === 'saiu_para_entrega' && notification?.sent) {
@@ -505,6 +531,67 @@ export default function Orders({ role }: { role: string }) {
                 <div style={{ background: 'rgba(168,85,247,0.06)', borderRadius: 14, padding: '14px 16px', border: '1px solid rgba(168,85,247,0.15)', marginBottom: 18 }}>
                   <p style={{ fontSize: 10, color: '#a855f7', fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase', marginBottom: 8 }}>Observações do pedido</p>
                   <p style={{ fontSize: 12, color: '#d1d5db', lineHeight: 1.6 }}>{selected.notes}</p>
+                </div>
+              )}
+
+              <div style={{ background: '#0d0d0d', borderRadius: 14, padding: '14px 16px', border: '1px solid rgba(255,255,255,0.05)', marginBottom: 18 }}>
+                <p style={{ fontSize: 10, color: '#a855f7', fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase', marginBottom: 10 }}>
+                  Checklist operacional
+                </p>
+                <div style={{ display: 'grid', gap: 10 }}>
+                  {getOperationalChecklist(selected).map((step) => (
+                    <div key={step.key} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                      <div style={{
+                        width: 22,
+                        height: 22,
+                        borderRadius: '50%',
+                        background: step.done ? 'rgba(34,197,94,0.14)' : 'rgba(255,255,255,0.04)',
+                        border: `1px solid ${step.done ? 'rgba(34,197,94,0.35)' : 'rgba(255,255,255,0.08)'}`,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        color: step.done ? '#22c55e' : '#666',
+                        flexShrink: 0,
+                      }}>
+                        <CheckCircle2 size={12} />
+                      </div>
+                      <span style={{ fontSize: 12.5, color: step.done ? '#fff' : '#8a8a92', fontWeight: step.done ? 700 : 500 }}>
+                        {step.label}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {selected.history && selected.history.length > 0 && (
+                <div style={{ background: '#0d0d0d', borderRadius: 14, padding: '14px 16px', border: '1px solid rgba(255,255,255,0.05)', marginBottom: 18 }}>
+                  <p style={{ fontSize: 10, color: '#a855f7', fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase', marginBottom: 12 }}>
+                    Histórico do pedido
+                  </p>
+                  <div style={{ display: 'grid', gap: 12 }}>
+                    {selected.history.slice().reverse().map((entry, index) => (
+                      <div key={entry.id} style={{ display: 'grid', gridTemplateColumns: '22px 1fr', gap: 10, alignItems: 'start' }}>
+                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                          <div style={{ width: 12, height: 12, borderRadius: '50%', background: '#a855f7', boxShadow: '0 0 0 4px rgba(168,85,247,0.14)' }} />
+                          {index < selected.history!.length - 1 && (
+                            <div style={{ width: 2, flex: 1, minHeight: 28, background: 'rgba(255,255,255,0.08)', marginTop: 6 }} />
+                          )}
+                        </div>
+                        <div>
+                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 4, flexWrap: 'wrap' }}>
+                            <strong style={{ fontSize: 12.5, color: '#fff' }}>{entry.label}</strong>
+                            <span style={{ fontSize: 11, color: '#777' }}>{new Date(entry.createdAt).toLocaleString('pt-BR')}</span>
+                          </div>
+                          <p style={{ fontSize: 11.5, color: '#a6a6af', lineHeight: 1.5 }}>{entry.description}</p>
+                          {(entry.actorName || entry.actorRole) && (
+                            <p style={{ fontSize: 10.5, color: '#6f6f77', marginTop: 5 }}>
+                              Atualizado por {entry.actorName || 'sistema'}{entry.actorRole ? ` · ${entry.actorRole}` : ''}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               )}
 

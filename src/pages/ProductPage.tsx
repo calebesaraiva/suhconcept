@@ -32,7 +32,11 @@ export default function ProductPage() {
   const navigate = useNavigate();
   const { data: product, loading } = useProduct(slug);
   const { data: relatedData } = useProducts({ limit: '8' });
-  const related = (relatedData?.products ?? []).filter((p) => p.slug !== slug).slice(0, 4);
+  const relatedSource = (relatedData?.products ?? []).filter((p) => p.slug !== slug);
+  const related = [
+    ...relatedSource.filter((p) => p.categorySlug === product?.categorySlug),
+    ...relatedSource.filter((p) => p.categorySlug !== product?.categorySlug),
+  ].slice(0, 4);
   const { addToCart, toggleWishlist, wishlist, showToast } = useStore();
   const pricingSettings = useStorePricingSettings();
 

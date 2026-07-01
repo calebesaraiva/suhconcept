@@ -55,9 +55,9 @@ model Customer {
 }
 
 model Order {
-  id             String      @id @default(cuid())
+  id             String               @id @default(cuid())
   customerId     String?
-  customer       Customer?   @relation(fields: [customerId], references: [id])
+  customer       Customer?            @relation(fields: [customerId], references: [id])
   customerName   String
   customerEmail  String
   customerPhone  String?
@@ -65,16 +65,17 @@ model Order {
   items          OrderItem[]
   subtotal       Float
   total          Float
-  discount       Float       @default(0)
-  status         String      @default("pendente")
+  discount       Float                @default(0)
+  status         String               @default("pendente")
   paymentMethod  String
-  deliveryMethod String      @default("delivery")
+  deliveryMethod String               @default("delivery")
   address        Json?
   couponCode     String?
-  cashback       Float       @default(0)
+  cashback       Float                @default(0)
   notes          String?
-  createdAt      DateTime    @default(now())
-  updatedAt      DateTime    @updatedAt
+  createdAt      DateTime             @default(now())
+  updatedAt      DateTime             @updatedAt
+  history        OrderStatusHistory[]
 }
 
 model OrderItem {
@@ -125,4 +126,19 @@ model Newsletter {
   id           String   @id @default(cuid())
   email        String   @unique
   subscribedAt DateTime @default(now())
+}
+
+model OrderStatusHistory {
+  id          String   @id @default(cuid())
+  orderId     String
+  order       Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  status      String
+  label       String
+  description String   @db.Text
+  actorName   String?
+  actorRole   String?
+  source      String   @default("system")
+  createdAt   DateTime @default(now())
+
+  @@index([orderId, createdAt])
 }

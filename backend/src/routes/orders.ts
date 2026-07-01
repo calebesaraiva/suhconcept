@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { prisma } from '../lib/prisma';
 import { createPagBankCheckout, getPagBankConfig } from '../lib/pagbank';
+import { createOrderStatusHistory } from '../lib/orderStatus';
 import { quoteShipping } from '../lib/shipping';
 import { getProductPricing, getStorePricingSettings } from '../lib/storePricing';
 import { getStoreSettingsMap, parseBool, parseNumber } from '../lib/storeSettings';
@@ -310,7 +311,16 @@ router.post('/', requireAuth, async (req: AuthRequest, res) => {
             }),
           },
         },
-        include: { items: true },
+        include: { items: true, history: { orderBy: { createdAt: 'asc' } } },
+      });
+
+      await createOrderStatusHistory(tx, {
+        orderId: createdOrder.id,
+        status: createdOrder.status,
+        deliveryMethod: createdOrder.deliveryMethod,
+        actorName: normalizedCustomerName,
+        actorRole: 'customer',
+        source: 'checkout',
       });
 
       for (const item of items) {
@@ -356,7 +366,7 @@ router.post('/', requireAuth, async (req: AuthRequest, res) => {
           status: 'pendente',
           notes: `${shippingMessage} | PagBank ainda não configurado.`,
         },
-        include: { items: true },
+        include: { items: true, history: { orderBy: { createdAt: 'asc' } } },
       });
       payment = {
         provider: 'manual',
@@ -371,7 +381,7 @@ router.post('/', requireAuth, async (req: AuthRequest, res) => {
           status: 'pendente',
           notes: `${shippingMessage} | Pagamento online liberado após confirmação do frete.`,
         },
-        include: { items: true },
+        include: { items: true, history: { orderBy: { createdAt: 'asc' } } },
       });
       payment = {
         provider: 'manual',
@@ -433,7 +443,7 @@ router.post('/', requireAuth, async (req: AuthRequest, res) => {
               },
             },
           },
-          include: { items: true },
+          include: { items: true, history: { orderBy: { createdAt: 'asc' } } },
         });
 
         payment = {
@@ -450,7 +460,7 @@ router.post('/', requireAuth, async (req: AuthRequest, res) => {
             status: 'pendente',
             notes: `Falha ao iniciar checkout PagBank: ${message}. Atendimento seguirá manualmente.`,
           },
-          include: { items: true },
+          include: { items: true, history: { orderBy: { createdAt: 'asc' } } },
         });
         payment = {
           provider: 'manual',
@@ -491,7 +501,7 @@ router.get('/mine', requireAuth, async (req: AuthRequest, res) => {
           { customer: { email } },
         ],
       },
-      include: { items: true },
+      include: { items: true, history: { orderBy: { createdAt: 'asc' } } },
       orderBy: { createdAt: 'desc' },
     });
 
@@ -505,7 +515,7 @@ router.get('/:id', async (req, res) => {
   try {
     const order = await prisma.order.findUnique({
       where: { id: req.params.id },
-      include: { items: true, customer: true },
+      include: { items: true, customer: true, history: { orderBy: { createdAt: 'asc' } } },
     });
     if (!order) return res.status(404).json({ error: 'Pedido não encontrado' });
     res.json(order);

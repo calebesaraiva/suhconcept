@@ -22,6 +22,11 @@ type DeliveryNotificationPayload = {
   storeName?: string;
 };
 
+type OrderStatusMailPayload = DeliveryNotificationPayload & {
+  status: string;
+  deliveryMethod?: string | null;
+};
+
 function formatCurrency(value: number) {
   return value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 }
@@ -64,10 +69,71 @@ export async function sendOrderOutForDeliveryEmail(
   prisma: PrismaClient,
   payload: DeliveryNotificationPayload,
 ): Promise<{ sent: boolean; reason?: string }> {
+  return sendOrderStatusEmail(prisma, {
+    ...payload,
+    status: 'saiu_para_entrega',
+  });
+}
+
+function getStatusMailMeta(status: string, deliveryMethod?: string | null) {
+  const pickup = String(deliveryMethod || '').toLowerCase() === 'pickup';
+
+  const map: Record<string, { title: string; intro: string; nextStep: string }> = {
+    pago: {
+      title: 'Pagamento confirmado',
+      intro: 'Seu pagamento foi confirmado e o pedido já entrou na fila de separação da loja.',
+      nextStep: 'Agora nossa equipe vai separar os itens e te avisar quando o pedido estiver pronto para envio ou retirada.',
+    },
+    em_preparo: {
+      title: 'Pedido em preparação',
+      intro: 'Nossa equipe já começou a separar e preparar os itens do seu pedido.',
+      nextStep: 'Assim que tudo estiver pronto, você receberá a próxima atualização automaticamente.',
+    },
+    enviado: {
+      title: pickup ? 'Pedido pronto para retirada' : 'Pedido pronto para envio',
+      intro: pickup
+        ? 'Seu pedido já está separado e pronto para retirada na loja.'
+        : 'Seu pedido já está separado e pronto para seguir para entrega.',
+      nextStep: pickup
+        ? 'Você já pode combinar sua retirada com a equipe da loja.'
+        : 'Em breve ele seguirá para entrega e você será avisado.',
+    },
+    saiu_para_entrega: {
+      title: 'Seu pedido saiu para entrega',
+      intro: 'Seu pedido já está em rota e em breve chegará até você.',
+      nextStep: 'Fique atento ao seu telefone e e-mail. Se precisar de suporte, responda esta mensagem e nossa equipe te ajuda rapidamente.',
+    },
+    entregue: {
+      title: pickup ? 'Pedido retirado com sucesso' : 'Pedido entregue com sucesso',
+      intro: pickup
+        ? 'Registramos a retirada do seu pedido com sucesso.'
+        : 'Registramos a entrega do seu pedido com sucesso.',
+      nextStep: 'Obrigado por comprar com a SUH CONCEPT. Sempre que quiser, estaremos por aqui.',
+    },
+    cancelado: {
+      title: 'Pedido cancelado',
+      intro: 'Seu pedido foi cancelado e não seguirá para as próximas etapas.',
+      nextStep: 'Se precisar de ajuda para refazer a compra ou tirar dúvidas, fale com a equipe da loja.',
+    },
+  };
+
+  return map[status] || {
+    title: 'Atualização do pedido',
+    intro: 'Seu pedido recebeu uma nova atualização no sistema da loja.',
+    nextStep: 'Se precisar de ajuda, fale com a equipe da loja.',
+  };
+}
+
+export async function sendOrderStatusEmail(
+  prisma: PrismaClient,
+  payload: OrderStatusMailPayload,
+): Promise<{ sent: boolean; reason?: string }> {
   const config = await getMailerConfig(prisma);
   if (!config) {
     return { sent: false, reason: 'SMTP não configurado no painel' };
   }
+
+  const statusMeta = getStatusMailMeta(payload.status, payload.deliveryMethod);
 
   const transporter = nodemailer.createTransport({
     host: config.host,
@@ -102,8 +168,8 @@ export async function sendOrderOutForDeliveryEmail(
         <div style="background:linear-gradient(135deg,#171722,#0f0f16);border:1px solid rgba(255,255,255,0.08);border-radius:24px;overflow:hidden;">
           <div style="padding:28px 28px 20px;background:linear-gradient(135deg,#8b5cf6 0%,#ec4899 100%);">
             <div style="font-size:12px;letter-spacing:.18em;text-transform:uppercase;font-weight:700;opacity:.92;">${payload.storeName || 'Loja'}</div>
-            <h1 style="margin:12px 0 8px;font-size:28px;line-height:1.15;">Seu pedido saiu para entrega</h1>
-            <p style="margin:0;font-size:15px;line-height:1.7;opacity:.95;">${payload.customerName}, seu pedido ${orderLabel} já está em rota e em breve chegará até você.</p>
+            <h1 style="margin:12px 0 8px;font-size:28px;line-height:1.15;">${statusMeta.title}</h1>
+            <p style="margin:0;font-size:15px;line-height:1.7;opacity:.95;">${payload.customerName}, ${statusMeta.intro} Pedido ${orderLabel}.</p>
           </div>
 
           <div style="padding:28px;">
@@ -134,7 +200,7 @@ export async function sendOrderOutForDeliveryEmail(
 
             <div style="background:rgba(139,92,246,0.08);border:1px solid rgba(139,92,246,0.22);border-radius:18px;padding:18px 22px;">
               <div style="font-size:12px;color:#c4b5fd;letter-spacing:.12em;text-transform:uppercase;font-weight:700;margin-bottom:8px;">Próximo passo</div>
-              <p style="margin:0;color:#ede9fe;font-size:14px;line-height:1.7;">Fique atento ao seu telefone e e-mail. Se precisar de suporte, responda esta mensagem e nossa equipe te ajuda rapidamente.</p>
+              <p style="margin:0;color:#ede9fe;font-size:14px;line-height:1.7;">${statusMeta.nextStep}</p>
             </div>
           </div>
         </div>
@@ -143,22 +209,22 @@ export async function sendOrderOutForDeliveryEmail(
   `;
 
   const text = [
-    `${payload.storeName || 'Loja'} - Pedido saiu para entrega`,
+    `${payload.storeName || 'Loja'} - ${statusMeta.title}`,
     '',
-    `${payload.customerName}, seu pedido ${orderLabel} saiu para entrega.`,
+    `${payload.customerName}, ${statusMeta.intro} Pedido ${orderLabel}.`,
     `Total pago: ${formatCurrency(payload.total)}`,
     '',
     'Itens:',
     ...payload.items.map((item) => `- ${item.productName} x${item.quantity}`),
     '',
     ...(addressLines.length ? ['Endereço de entrega:', ...addressLines, ''] : []),
-    'Em breve ele chegará até você.',
+    statusMeta.nextStep,
   ].join('\n');
 
   await transporter.sendMail({
     from: `"${config.fromName}" <${config.fromEmail}>`,
     to: payload.customerEmail,
-    subject: `${payload.storeName || 'Loja'} • Pedido ${orderLabel} saiu para entrega`,
+    subject: `${payload.storeName || 'Loja'} • ${statusMeta.title} ${orderLabel}`,
     html,
     text,
   });

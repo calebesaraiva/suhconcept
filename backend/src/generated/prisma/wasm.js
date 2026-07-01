@@ -235,6 +235,18 @@ exports.Prisma.NewsletterScalarFieldEnum = {
   subscribedAt: 'subscribedAt'
 };
 
+exports.Prisma.OrderStatusHistoryScalarFieldEnum = {
+  id: 'id',
+  orderId: 'orderId',
+  status: 'status',
+  label: 'label',
+  description: 'description',
+  actorName: 'actorName',
+  actorRole: 'actorRole',
+  source: 'source',
+  createdAt: 'createdAt'
+};
+
 exports.Prisma.SortOrder = {
   asc: 'asc',
   desc: 'desc'
@@ -274,7 +286,8 @@ exports.Prisma.ModelName = {
   Coupon: 'Coupon',
   Setting: 'Setting',
   User: 'User',
-  Newsletter: 'Newsletter'
+  Newsletter: 'Newsletter',
+  OrderStatusHistory: 'OrderStatusHistory'
 };
 
 /**

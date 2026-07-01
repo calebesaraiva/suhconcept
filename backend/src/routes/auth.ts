@@ -313,6 +313,7 @@ router.get('/orders', requireAuth, async (req: AuthRequest, res) => {
       },
       include: {
         items: true,
+        history: { orderBy: { createdAt: 'asc' } },
       },
       orderBy: { createdAt: 'desc' },
     });

@@ -9,6 +9,7 @@ import MobileDrawer from './MobileDrawer';
 import CartDrawer from './CartDrawer';
 import Toast from '../ui/Toast';
 import AccountModal from '../ui/AccountModal';
+import FloatingWhatsApp from './FloatingWhatsApp';
 
 export default function StoreLayout() {
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -31,6 +32,7 @@ export default function StoreLayout() {
       </main>
 
       {!isCheckout && <Footer />}
+      {!isCheckout && <FloatingWhatsApp />}
       <MobileBottomNav />
       <MobileDrawer open={drawerOpen} onClose={() => setDrawerOpen(false)} onAccountOpen={() => setAccountOpen(true)} />
       <CartDrawer open={cartOpen} onClose={() => setCartOpen(false)} />

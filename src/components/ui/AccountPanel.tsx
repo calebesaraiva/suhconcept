@@ -277,6 +277,18 @@ export default function AccountPanel({ compact = false, onAuthSuccess, redirectT
     };
   }, [currentUser]);
 
+  useEffect(() => {
+    if (!currentUser) return;
+
+    const interval = window.setInterval(() => {
+      api.orders.mine()
+        .then((data) => setOrders(data))
+        .catch(() => undefined);
+    }, 25000);
+
+    return () => window.clearInterval(interval);
+  }, [currentUser]);
+
   const resetForm = () => {
     setName('');
     setPassword('');
@@ -592,6 +604,7 @@ export default function AccountPanel({ compact = false, onAuthSuccess, redirectT
               {orders.slice(0, compact ? 4 : 8).map((order) => {
                 const statusMeta = getOrderStatusMeta(order.status, order.deliveryMethod);
                 const progressSteps = getOrderProgressSteps(order.status, order.deliveryMethod);
+                const latestHistory = order.history?.length ? order.history[order.history.length - 1] : null;
                 return (
                 <div key={order.id} style={{ padding: '14px 16px', borderRadius: 14, background: '#0d0d0f', border: '1px solid rgba(255,255,255,0.06)' }}>
                   <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, marginBottom: 10 }}>
@@ -664,6 +677,13 @@ export default function AccountPanel({ compact = false, onAuthSuccess, redirectT
                     <span>{order.paymentMethod}</span>
                     <span>R$ {order.total.toFixed(2).replace('.', ',')}</span>
                   </div>
+                  {latestHistory && (
+                    <div style={{ marginTop: 10, paddingTop: 10, borderTop: '1px solid rgba(255,255,255,0.05)' }}>
+                      <p style={{ fontSize: 10.5, color: '#8f8f98', lineHeight: 1.55 }}>
+                        Última atualização: {latestHistory.label} em {new Date(latestHistory.createdAt).toLocaleString('pt-BR')}
+                      </p>
+                    </div>
+                  )}
                 </div>
               )})}
             </div>

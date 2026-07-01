@@ -75,6 +75,7 @@ model Order {
   notes          String?
   createdAt      DateTime    @default(now())
   updatedAt      DateTime    @updatedAt
+  history        OrderStatusHistory[]
 }
 
 model OrderItem {
@@ -125,4 +126,19 @@ model Newsletter {
   id           String   @id @default(cuid())
   email        String   @unique
   subscribedAt DateTime @default(now())
+}
+
+model OrderStatusHistory {
+  id          String   @id @default(cuid())
+  orderId     String
+  order       Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  status      String
+  label       String
+  description String   @db.Text
+  actorName   String?
+  actorRole   String?
+  source      String   @default("system")
+  createdAt   DateTime @default(now())
+
+  @@index([orderId, createdAt])
 }

@@ -4,7 +4,8 @@ import { AuthRequest, requireAuth, requireAdmin, requireRole } from '../middlewa
 import { prisma } from '../lib/prisma';
 import { getPagBankCheckoutStatus, getPagBankConfig, getPagBankOrderStatus, mapPagBankStatus } from '../lib/pagbank';
 import { getStoreSettingsMap } from '../lib/storeSettings';
-import { sendOrderOutForDeliveryEmail } from '../lib/mailer';
+import { sendOrderStatusEmail } from '../lib/mailer';
+import { appendOrderStatusHistoryIfChanged } from '../lib/orderStatus';
 import { quoteShipping } from '../lib/shipping';
 import { canViewCostData, isSellerRole, normalizeRole, sanitizeStaffRole } from '../lib/roles';
 
@@ -121,7 +122,7 @@ async function syncPagBankOrderStatusIfNeeded(order: {
         },
       },
     },
-    include: { items: true },
+    include: { items: true, history: { orderBy: { createdAt: 'asc' } } },
   });
 }
 
@@ -225,7 +226,16 @@ router.get('/orders', requireRole('master', 'manager', 'seller'), async (req, re
       ];
     }
     const [orders, total] = await Promise.all([
-      prisma.order.findMany({ where, orderBy: { createdAt: 'desc' }, take, skip, include: { items: true } }),
+      prisma.order.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        take,
+        skip,
+        include: {
+          items: true,
+          history: { orderBy: { createdAt: 'asc' } },
+        },
+      }),
       prisma.order.count({ where }),
     ]);
     const syncedOrders = await Promise.all(orders.map(async (order) => {
@@ -261,13 +271,30 @@ router.patch('/orders/:id/status', requireRole('master', 'manager', 'seller'), a
       return res.status(400).json({ error: 'Pedidos com retirada não podem ir para entrega' });
     }
 
-    await prisma.order.update({ where: { id: orderId }, data: { status } });
-    const order = await prisma.order.findUnique({ where: { id: orderId } });
+    await prisma.$transaction(async (tx) => {
+      await tx.order.update({ where: { id: orderId }, data: { status } });
+      await appendOrderStatusHistoryIfChanged(tx, {
+        orderId,
+        previousStatus: existingOrder.status,
+        nextStatus: status,
+        deliveryMethod: existingOrder.deliveryMethod,
+        actorName: req.user?.email || null,
+        actorRole: currentRole,
+        source: 'dashboard',
+      });
+    });
+
+    const order = await prisma.order.findUnique({
+      where: { id: orderId },
+      include: {
+        history: { orderBy: { createdAt: 'asc' } },
+      },
+    });
     const orderItems = await prisma.orderItem.findMany({ where: { orderId } });
     if (!order) return res.status(404).json({ error: 'Pedido não encontrado' });
 
     let notification: { sent: boolean; reason?: string } | null = null;
-    if (status === 'saiu_para_entrega') {
+    if (['pago', 'em_preparo', 'enviado', 'saiu_para_entrega', 'entregue', 'cancelado'].includes(status)) {
       try {
         const settings = await getStoreSettingsMap(prisma);
         const address =
@@ -275,11 +302,13 @@ router.patch('/orders/:id/status', requireRole('master', 'manager', 'seller'), a
             ? (existingOrder.address as Record<string, unknown>)
             : null;
 
-        notification = await sendOrderOutForDeliveryEmail(prisma, {
+        notification = await sendOrderStatusEmail(prisma, {
           orderId: order.id,
           customerName: order.customerName,
           customerEmail: order.customerEmail,
           total: order.total,
+          status,
+          deliveryMethod: existingOrder.deliveryMethod,
           items: orderItems.map((item: { productName: string; quantity: number; size: string; color: string }) => ({
             productName: item.productName,
             quantity: item.quantity,
@@ -290,7 +319,7 @@ router.patch('/orders/:id/status', requireRole('master', 'manager', 'seller'), a
           storeName: settings.smtpFromName || settings.storeName || 'Loja',
         });
       } catch (error) {
-        console.error('Erro ao enviar e-mail de pedido em rota:', error);
+        console.error('Erro ao enviar e-mail de atualização do pedido:', error);
         notification = { sent: false, reason: 'Falha ao enviar notificação por e-mail' };
       }
     }
