@@ -21,6 +21,8 @@ export const DEFAULT_STORE_PRICING_SETTINGS: StorePricingSettings = {
   freeShipThreshold: 599.99,
 };
 
+const MIN_ONLINE_PAYMENT_AMOUNT = 1;
+
 function roundMoney(value: number) {
   return Math.round(value * 100) / 100;
 }
@@ -93,7 +95,10 @@ export function getProductPricing(
   const installmentOverride = parseIntTag(product.tags, 'offer-installments:');
   const comboOffer = getComboOffer(product.tags);
   const installmentCount = installmentOverride ?? Math.max(1, installmentsData?.count ? Number(installmentsData.count) : settings.maxInstallments);
-  const pixPrice = pixOverride ?? roundMoney(product.price * (1 - settings.pixDiscount / 100));
+  const pixPrice = Math.max(
+    MIN_ONLINE_PAYMENT_AMOUNT,
+    pixOverride ?? roundMoney(product.price * (1 - settings.pixDiscount / 100)),
+  );
   const baseUnitPrice = paymentMode === 'pix' ? pixPrice : product.price;
   const baseTotalPrice = roundMoney(baseUnitPrice * quantity);
   const comboCount = comboOffer ? Math.floor(quantity / comboOffer.quantity) : 0;

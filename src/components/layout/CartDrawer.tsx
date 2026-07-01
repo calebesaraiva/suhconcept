@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, ShoppingBag, Trash2, Plus, Minus, Tag, Truck, Lock, Zap, ArrowRight, Coins } from 'lucide-react';
+import { X, ShoppingBag, Trash2, Plus, Minus, Tag, Truck, Lock, Zap, ArrowRight, Coins, MapPin, Loader2, CheckCircle2 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { useStore } from '../../store/useStore';
 import { getProductPricing, useStorePricingSettings } from '../../lib/storePricing';
@@ -78,6 +78,15 @@ export default function CartDrawer({ open, onClose }: Props) {
         : freeShip
           ? 'Frete grátis acima do valor mínimo'
           : 'Digite seu CEP para calcular';
+  const shippingHint = freeShip
+    ? 'Seu pedido já entrou na regra de frete grátis.'
+    : shippingQuote
+      ? shippingQuote.selected.deadlineText
+        ? `${shippingQuote.selected.deadlineText} • valor já somado no checkout`
+        : 'Frete calculado com sucesso'
+      : shippingError
+        ? 'Confira o CEP informado ou tente novamente.'
+        : 'Entrega local em Imperatriz por R$ 10,00. Outras cidades calculam automático.';
   const totalWithShipping = subtotal + (freeShip || !shippingQuote ? 0 : shippingQuote.selected.price);
 
   return (
@@ -261,19 +270,65 @@ export default function CartDrawer({ open, onClose }: Props) {
                   </button>
                 </div>
 
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: '14px 16px', borderRadius: 14, background: '#fffdf7', border: '1px solid rgba(12,46,42,0.14)', boxShadow: '0 14px 30px rgba(12,46,42,0.07)' }}>
-                  <label style={{ fontSize: 10.5, color: '#596760', fontWeight: 900, letterSpacing: '0.1em', textTransform: 'uppercase' }}>Calcular frete</label>
-                  <input
-                    value={cep}
-                    onChange={(event) => setCep(event.target.value)}
-                    placeholder="Digite seu CEP"
-                    style={{ width: '100%', background: '#fffdf7', border: '1px solid rgba(12,46,42,0.16)', borderRadius: 10, padding: '10px 12px', color: '#0b2f2b', fontSize: 13, fontFamily: 'inherit', outline: 'none' }}
-                    onFocus={e => (e.currentTarget.style.borderColor = 'rgba(14,90,81,0.42)')}
-                    onBlur={e => (e.currentTarget.style.borderColor = 'rgba(12,46,42,0.16)')}
-                  />
-                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, fontSize: 12, color: shippingError ? '#9b6d22' : '#596760' }}>
-                    <span>Frete</span>
-                    <span style={{ textAlign: 'right', fontWeight: 700, color: shippingQuote ? '#0e5a51' : shippingError ? '#9b6d22' : '#596760' }}>{shippingLabel}</span>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 12, padding: '16px', borderRadius: 16, background: 'linear-gradient(180deg, rgba(20,20,20,0.98), rgba(15,15,15,0.98))', border: `1px solid ${shippingError ? 'rgba(255,184,0,0.24)' : shippingQuote || freeShip ? 'rgba(34,197,94,0.18)' : 'rgba(255,255,255,0.08)'}`, boxShadow: shippingQuote || freeShip ? '0 18px 38px rgba(34,197,94,0.08)' : '0 18px 38px rgba(0,0,0,0.24)' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                      <div style={{ width: 36, height: 36, borderRadius: 12, background: shippingQuote || freeShip ? 'rgba(34,197,94,0.12)' : 'rgba(168,85,247,0.12)', border: `1px solid ${shippingQuote || freeShip ? 'rgba(34,197,94,0.24)' : 'rgba(168,85,247,0.24)'}`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                        {shippingLoading ? (
+                          <Loader2 size={16} style={{ color: '#22C55E', animation: 'spin 1s linear infinite' }} />
+                        ) : freeShip || shippingQuote ? (
+                          <CheckCircle2 size={16} style={{ color: '#22C55E' }} />
+                        ) : (
+                          <Truck size={16} style={{ color: '#a855f7' }} />
+                        )}
+                      </div>
+                      <div>
+                        <label style={{ display: 'block', fontSize: 10.5, color: '#8b8b93', fontWeight: 900, letterSpacing: '0.12em', textTransform: 'uppercase', marginBottom: 3 }}>
+                          Calcular frete
+                        </label>
+                        <p style={{ fontSize: 12.5, fontWeight: 700, color: '#fff', lineHeight: 1.25 }}>
+                          {shippingLoading ? 'Buscando melhor entrega...' : freeShip ? 'Frete grátis liberado' : shippingQuote ? 'Frete calculado' : 'Informe seu CEP'}
+                        </p>
+                      </div>
+                    </div>
+                    {(shippingQuote || freeShip) && (
+                      <div style={{ padding: '5px 9px', borderRadius: 999, background: freeShip ? 'rgba(34,197,94,0.12)' : 'rgba(255,255,255,0.06)', border: `1px solid ${freeShip ? 'rgba(34,197,94,0.24)' : 'rgba(255,255,255,0.08)'}`, fontSize: 10.5, fontWeight: 800, color: freeShip ? '#22C55E' : '#d4d4d8', whiteSpace: 'nowrap' }}>
+                        {freeShip ? 'GRÁTIS' : 'OK'}
+                      </div>
+                    )}
+                  </div>
+
+                  <div style={{ position: 'relative' }}>
+                    <MapPin size={15} style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: '#6b7280', pointerEvents: 'none' }} />
+                    <input
+                      value={cep}
+                      onChange={(event) => setCep(event.target.value)}
+                      placeholder="Digite seu CEP"
+                      inputMode="numeric"
+                      maxLength={9}
+                      style={{ width: '100%', background: 'rgba(255,255,255,0.03)', border: `1px solid ${shippingError ? 'rgba(255,184,0,0.26)' : 'rgba(255,255,255,0.1)'}`, borderRadius: 12, padding: '12px 14px 12px 38px', color: '#fff', fontSize: 13.5, fontFamily: 'inherit', outline: 'none', transition: 'all 0.18s' }}
+                      onFocus={e => (e.currentTarget.style.borderColor = shippingError ? 'rgba(255,184,0,0.42)' : 'rgba(168,85,247,0.42)')}
+                      onBlur={e => (e.currentTarget.style.borderColor = shippingError ? 'rgba(255,184,0,0.26)' : 'rgba(255,255,255,0.1)')}
+                    />
+                  </div>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 12, alignItems: 'start', padding: '10px 12px', borderRadius: 12, background: shippingError ? 'rgba(255,184,0,0.08)' : 'rgba(255,255,255,0.03)', border: `1px solid ${shippingError ? 'rgba(255,184,0,0.18)' : 'rgba(255,255,255,0.05)'}` }}>
+                    <div>
+                      <p style={{ fontSize: 11, color: '#8b8b93', fontWeight: 800, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 5 }}>
+                        Status do frete
+                      </p>
+                      <p style={{ fontSize: 11.5, color: shippingError ? '#fbbf24' : '#7b7b84', lineHeight: 1.5 }}>
+                        {shippingHint}
+                      </p>
+                    </div>
+                    <div style={{ textAlign: 'right', minWidth: 120 }}>
+                      <p style={{ fontSize: 10.5, color: '#8b8b93', fontWeight: 800, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 5 }}>
+                        Resultado
+                      </p>
+                      <p style={{ fontSize: 13, fontWeight: 800, color: shippingQuote ? '#22C55E' : shippingError ? '#fbbf24' : '#f4f4f5', lineHeight: 1.35 }}>
+                        {shippingLabel}
+                      </p>
+                    </div>
                   </div>
                 </div>
 

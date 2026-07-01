@@ -240,6 +240,10 @@ export default function CheckoutPage() {
 
   const next = () => {
     if (!validateStep()) return;
+    if (step === 1 && (resolvedPayMethod === 'cartao' || resolvedPayMethod === 'pix')) {
+      void handleFinish();
+      return;
+    }
     if (step < 2) setStep((s) => s + 1);
     else void handleFinish();
   };
@@ -757,7 +761,13 @@ export default function CheckoutPage() {
               </button>
             )}
             <button onClick={next} style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, padding: '14px', borderRadius: 10, border: 'none', background: 'linear-gradient(135deg,#a855f7,#FF2DA0)', color: '#fff', fontWeight: 900, fontSize: 13, letterSpacing: '0.06em', cursor: 'pointer', fontFamily: 'inherit' }}>
-              {submitting ? <><Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} /> PROCESSANDO...</> : step === 2 ? <><Lock size={14} /> {resolvedPayMethod === 'cartao' || resolvedPayMethod === 'pix' ? 'IR PARA PAGAMENTO' : 'CONFIRMAR PEDIDO'}</> : <>CONTINUAR <ChevronRight size={14} /></>}
+              {submitting ? (
+                <><Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} /> PROCESSANDO...</>
+              ) : step === 1 || step === 2 ? (
+                <><Lock size={14} /> {resolvedPayMethod === 'cartao' || resolvedPayMethod === 'pix' ? 'IR PARA PAGAMENTO' : 'CONFIRMAR PEDIDO'}</>
+              ) : (
+                <>CONTINUAR <ChevronRight size={14} /></>
+              )}
             </button>
           </div>
         </div>
