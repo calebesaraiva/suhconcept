@@ -66,18 +66,63 @@ const googleBadgeStyle: CSSProperties = {
   flexShrink: 0,
 };
 
-function getOrderStatusLabel(status: string) {
-  const map: Record<string, string> = {
-    aguardando_pagamento: 'Aguardando pagamento',
-    pago: 'Pago',
-    em_preparo: 'Em preparo',
-    enviado: 'Enviado',
-    saiu_para_entrega: 'Saiu para entrega',
-    entregue: 'Entregue',
-    cancelado: 'Cancelado',
-    pendente: 'Pendente',
+function getOrderStatusMeta(status: string, deliveryMethod?: string) {
+  const pickup = deliveryMethod === 'pickup';
+  const map: Record<string, { label: string; description: string; color: string; background: string }> = {
+    aguardando_pagamento: {
+      label: 'Aguardando pagamento',
+      description: 'Estamos esperando a confirmação do pagamento para iniciar o pedido.',
+      color: '#f59e0b',
+      background: 'rgba(245,158,11,0.12)',
+    },
+    pago: {
+      label: 'Pago',
+      description: 'Pagamento confirmado. Seu pedido entrou na fila de separação.',
+      color: '#22c55e',
+      background: 'rgba(34,197,94,0.12)',
+    },
+    em_preparo: {
+      label: 'Em preparação',
+      description: 'Nossa equipe está separando e preparando os itens do seu pedido.',
+      color: '#a855f7',
+      background: 'rgba(168,85,247,0.12)',
+    },
+    enviado: {
+      label: pickup ? 'Aguardando retirada' : 'Pronto para envio',
+      description: pickup
+        ? 'Seu pedido já está separado e pronto para retirada na loja.'
+        : 'Seu pedido já foi separado e está pronto para sair para entrega.',
+      color: '#3b82f6',
+      background: 'rgba(59,130,246,0.12)',
+    },
+    saiu_para_entrega: {
+      label: 'Em rota de entrega',
+      description: 'Seu pedido já saiu e está a caminho do endereço informado.',
+      color: '#06b6d4',
+      background: 'rgba(6,182,212,0.12)',
+    },
+    entregue: {
+      label: pickup ? 'Retirado' : 'Entregue',
+      description: pickup
+        ? 'Pedido retirado com sucesso. Obrigado por comprar com a SUH CONCEPT.'
+        : 'Pedido entregue com sucesso. Obrigado por comprar com a SUH CONCEPT.',
+      color: '#22c55e',
+      background: 'rgba(34,197,94,0.12)',
+    },
+    cancelado: {
+      label: 'Cancelado',
+      description: 'Esse pedido foi cancelado e não seguirá para separação ou entrega.',
+      color: '#ef4444',
+      background: 'rgba(239,68,68,0.12)',
+    },
+    pendente: {
+      label: 'Pendente',
+      description: 'Recebemos o pedido e estamos validando as próximas etapas.',
+      color: '#f59e0b',
+      background: 'rgba(245,158,11,0.12)',
+    },
   };
-  return map[status] || status;
+  return map[status] || map.pendente;
 }
 
 export default function AccountPanel({ compact = false, onAuthSuccess, redirectTo }: Props) {
@@ -506,21 +551,40 @@ export default function AccountPanel({ compact = false, onAuthSuccess, redirectT
             </div>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-              {orders.slice(0, compact ? 3 : 8).map((order) => (
+              {orders.slice(0, compact ? 4 : 8).map((order) => {
+                const statusMeta = getOrderStatusMeta(order.status, order.deliveryMethod);
+                return (
                 <div key={order.id} style={{ padding: '14px 16px', borderRadius: 14, background: '#0d0d0f', border: '1px solid rgba(255,255,255,0.06)' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 6 }}>
+                  <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, marginBottom: 10 }}>
                     <strong style={{ fontSize: 13, color: '#fff' }}>#{order.id.slice(-8).toUpperCase()}</strong>
-                    <span style={{ fontSize: 11, color: '#a855f7', fontWeight: 800 }}>{getOrderStatusLabel(order.status)}</span>
+                    <span
+                      style={{
+                        fontSize: 10.5,
+                        color: statusMeta.color,
+                        background: statusMeta.background,
+                        border: `1px solid ${statusMeta.color}22`,
+                        fontWeight: 900,
+                        padding: '5px 10px',
+                        borderRadius: 999,
+                        letterSpacing: '0.03em',
+                        textAlign: 'center',
+                      }}
+                    >
+                      {statusMeta.label}
+                    </span>
                   </div>
                   <p style={{ fontSize: 12, color: '#d1d5db', marginBottom: 5 }}>
                     {order.items.map((item) => `${item.productName} x${item.quantity}`).join(' · ')}
+                  </p>
+                  <p style={{ fontSize: 11.5, color: '#9ca3af', lineHeight: 1.5, marginBottom: 8 }}>
+                    {statusMeta.description}
                   </p>
                   <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, fontSize: 11.5, color: '#7d7d84', flexWrap: 'wrap' }}>
                     <span>{order.paymentMethod}</span>
                     <span>R$ {order.total.toFixed(2).replace('.', ',')}</span>
                   </div>
                 </div>
-              ))}
+              )})}
             </div>
           )}
         </div>
