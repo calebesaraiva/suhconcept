@@ -1,12 +1,22 @@
 import { useEffect, useState } from 'react';
 import type { CSSProperties, FormEvent } from 'react';
-import { Loader2, LogOut, User } from 'lucide-react';
-import { api, type ApiUser } from '../../lib/api';
+import { Loader2, LogOut, Mail, Package, ShieldCheck, User } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import {
+  api,
+  clearSession,
+  getStoredToken,
+  storeSession,
+  type ApiOrder,
+  type ApiUser,
+  type SocialProviderStatus,
+} from '../../lib/api';
 import { useStore } from '../../store/useStore';
 
 interface Props {
   compact?: boolean;
   onAuthSuccess?: () => void;
+  redirectTo?: string;
 }
 
 type Mode = 'login' | 'register';
@@ -24,30 +34,80 @@ const fieldStyle: CSSProperties = {
   boxSizing: 'border-box',
 };
 
-export default function AccountPanel({ compact = false, onAuthSuccess }: Props) {
+const socialButtonStyle: CSSProperties = {
+  width: '100%',
+  padding: '13px 14px',
+  borderRadius: 12,
+  border: '1px solid rgba(255,255,255,0.09)',
+  background: '#0d0d0f',
+  color: '#fff',
+  fontWeight: 700,
+  fontSize: 13,
+  fontFamily: 'inherit',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  gap: 10,
+  cursor: 'pointer',
+};
+
+function getOrderStatusLabel(status: string) {
+  const map: Record<string, string> = {
+    aguardando_pagamento: 'Aguardando pagamento',
+    pago: 'Pago',
+    em_preparo: 'Em preparo',
+    enviado: 'Enviado',
+    saiu_para_entrega: 'Saiu para entrega',
+    entregue: 'Entregue',
+    cancelado: 'Cancelado',
+    pendente: 'Pendente',
+  };
+  return map[status] || status;
+}
+
+export default function AccountPanel({ compact = false, onAuthSuccess, redirectTo }: Props) {
   const { showToast } = useStore();
+  const navigate = useNavigate();
   const [mode, setMode] = useState<Mode>('login');
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [loading, setLoading] = useState(false);
-  const [checkingSession, setCheckingSession] = useState(() => !!localStorage.getItem('suh_token'));
+  const [checkingSession, setCheckingSession] = useState(() => !!getStoredToken());
+  const [ordersLoading, setOrdersLoading] = useState(false);
   const [error, setError] = useState('');
   const [currentUser, setCurrentUser] = useState<ApiUser | null>(null);
+  const [orders, setOrders] = useState<ApiOrder[]>([]);
+  const [providers, setProviders] = useState<SocialProviderStatus[]>([]);
 
   useEffect(() => {
     let active = true;
-    const token = localStorage.getItem('suh_token');
+    const token = getStoredToken();
 
-    if (!token) return;
-
-    api.auth.me()
-      .then(user => {
-        if (active) setCurrentUser(user);
+    api.auth.providers()
+      .then((data) => {
+        if (active) setProviders(data);
       })
       .catch(() => {
-        localStorage.removeItem('suh_token');
+        if (active) setProviders([]);
+      });
+
+    if (!token) {
+      setCheckingSession(false);
+      return () => {
+        active = false;
+      };
+    }
+
+    api.auth.me()
+      .then((user) => {
+        if (!active) return;
+        setCurrentUser(user);
+        setEmail(user.email);
+      })
+      .catch(() => {
+        clearSession();
       })
       .finally(() => {
         if (active) setCheckingSession(false);
@@ -58,9 +118,33 @@ export default function AccountPanel({ compact = false, onAuthSuccess }: Props) 
     };
   }, []);
 
+  useEffect(() => {
+    if (!currentUser) {
+      setOrders([]);
+      return;
+    }
+
+    let active = true;
+    setOrdersLoading(true);
+
+    api.orders.mine()
+      .then((data) => {
+        if (active) setOrders(data);
+      })
+      .catch(() => {
+        if (active) setOrders([]);
+      })
+      .finally(() => {
+        if (active) setOrdersLoading(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [currentUser]);
+
   const resetForm = () => {
     setName('');
-    setEmail('');
     setPassword('');
     setConfirmPassword('');
     setError('');
@@ -72,11 +156,16 @@ export default function AccountPanel({ compact = false, onAuthSuccess }: Props) 
   };
 
   const handleAuthenticated = (token: string, user: ApiUser, message: string) => {
-    localStorage.setItem('suh_token', token);
+    storeSession(token, user);
     setCurrentUser(user);
+    setEmail(user.email);
     resetForm();
     showToast(message);
     onAuthSuccess?.();
+
+    if (redirectTo) {
+      navigate(redirectTo);
+    }
   };
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
@@ -129,16 +218,32 @@ export default function AccountPanel({ compact = false, onAuthSuccess }: Props) 
   };
 
   const handleLogout = () => {
-    localStorage.removeItem('suh_token');
+    clearSession();
     setCurrentUser(null);
+    setOrders([]);
     resetForm();
     setMode('login');
     showToast('Sessão encerrada.');
   };
 
+  const handleSocialClick = (provider: 'google' | 'apple') => {
+    const providerInfo = providers.find((item) => item.provider === provider);
+    if (!providerInfo?.enabled) {
+      showToast(
+        provider === 'google'
+          ? 'Login com Google preparado, mas ainda falta a chave oficial para ativar.'
+          : 'Login com iCloud preparado, mas ainda falta a chave oficial da Apple para ativar.',
+        'error',
+      );
+      return;
+    }
+
+    showToast('Integração social habilitada. Finalizando redirecionamento na próxima etapa.');
+  };
+
   const containerStyle: CSSProperties = compact
     ? { padding: 0 }
-    : { maxWidth: 480, margin: '0 auto', padding: '32px 16px 100px' };
+    : { maxWidth: 560, margin: '0 auto', padding: '32px 16px 100px' };
 
   const cardPadding = compact ? '24px 22px' : '28px 24px';
 
@@ -166,11 +271,17 @@ export default function AccountPanel({ compact = false, onAuthSuccess }: Props) 
         ) : currentUser ? (
           <>
             <p style={{ fontSize: 16, fontWeight: 800, color: '#fff', marginBottom: 6 }}>
-              Ola, {currentUser.name.split(' ')[0]}!
+              Olá, {currentUser.name.split(' ')[0]}!
             </p>
-            <p style={{ fontSize: 13, color: '#888', marginBottom: 22 }}>
-              Conectado com {currentUser.email}
+            <p style={{ fontSize: 13, color: '#888', marginBottom: 18 }}>
+              Você está conectado com {currentUser.email}
             </p>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '11px 12px', borderRadius: 12, background: 'rgba(34,197,94,0.07)', border: '1px solid rgba(34,197,94,0.16)', marginBottom: 18, textAlign: 'left' }}>
+              <ShieldCheck size={16} style={{ color: '#22C55E', flexShrink: 0 }} />
+              <span style={{ fontSize: 12, color: '#ccefd7', lineHeight: 1.5 }}>
+                Compra protegida: seus pedidos ficam vinculados à sua conta para acompanhar pagamento, preparo e entrega.
+              </span>
+            </div>
             <button
               onClick={handleLogout}
               style={{ width: '100%', padding: '13px', borderRadius: 10, border: '1px solid rgba(255,255,255,0.12)', background: 'rgba(255,255,255,0.02)', color: '#fff', fontWeight: 700, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}
@@ -186,9 +297,23 @@ export default function AccountPanel({ compact = false, onAuthSuccess }: Props) 
             </p>
             <p style={{ fontSize: 13, color: '#666', marginBottom: 24 }}>
               {mode === 'login'
-                ? 'Acompanhe seus pedidos e finalize mais rapido.'
-                : 'Cadastre-se para comprar com mais praticidade.'}
+                ? 'Faça login para comprar, acompanhar seus pedidos e pagar mais rápido.'
+                : 'Cadastre-se para comprar com praticidade e acompanhar tudo depois.'}
             </p>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 18 }}>
+              <button type="button" onClick={() => handleSocialClick('google')} style={socialButtonStyle}>
+                <Mail size={16} />
+                Entrar com Google
+              </button>
+              <button type="button" onClick={() => handleSocialClick('apple')} style={socialButtonStyle}>
+                <span style={{ fontSize: 12, fontWeight: 900, letterSpacing: '0.08em' }}>APPLE</span>
+                Entrar com iCloud
+              </button>
+              <p style={{ fontSize: 11, color: '#7d7d84', lineHeight: 1.5, textAlign: 'left' }}>
+                Login social já está preparado na interface. A ativação final depende das chaves oficiais do Google e da Apple.
+              </p>
+            </div>
 
             <div style={{ display: 'flex', gap: 8, marginBottom: 18, padding: 4, background: '#0d0d0d', borderRadius: 14, border: '1px solid rgba(255,255,255,0.05)' }}>
               <button
@@ -265,7 +390,7 @@ export default function AccountPanel({ compact = false, onAuthSuccess }: Props) 
                   type="password"
                   value={password}
                   onChange={event => setPassword(event.target.value)}
-                  placeholder="Minimo de 6 caracteres"
+                  placeholder="Mínimo de 6 caracteres"
                   style={fieldStyle}
                 />
               </div>
@@ -297,12 +422,56 @@ export default function AccountPanel({ compact = false, onAuthSuccess }: Props) 
                 style={{ width: '100%', padding: '13px', marginTop: 4, borderRadius: 10, border: 'none', background: 'linear-gradient(135deg,#a855f7,#FF2DA0)', color: '#fff', fontWeight: 800, fontSize: 13, cursor: loading ? 'wait' : 'pointer', fontFamily: 'inherit', letterSpacing: '0.04em', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8, opacity: loading ? 0.75 : 1 }}
               >
                 {loading && <Loader2 size={15} style={{ animation: 'spin 1s linear infinite' }} />}
-                {mode === 'login' ? 'ENTRAR' : 'CRIAR CONTA'}
+                {mode === 'login' ? 'ENTRAR E COMPRAR' : 'CRIAR CONTA'}
               </button>
             </form>
           </>
         )}
       </div>
+
+      {currentUser && (
+        <div style={{ background: '#111', borderRadius: 18, border: '1px solid rgba(255,255,255,0.07)', padding: cardPadding }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, marginBottom: 16 }}>
+            <div>
+              <p style={{ fontSize: 11, fontWeight: 700, color: '#a855f7', letterSpacing: '0.14em', textTransform: 'uppercase', marginBottom: 4 }}>
+                Meus
+              </p>
+              <h2 style={{ fontSize: 20, fontWeight: 900, color: '#fff' }}>Pedidos</h2>
+            </div>
+            <Package size={18} style={{ color: '#a855f7' }} />
+          </div>
+
+          {ordersLoading ? (
+            <div style={{ display: 'grid', placeItems: 'center', gap: 10, padding: '16px 0 6px' }}>
+              <Loader2 size={18} style={{ color: '#a855f7', animation: 'spin 1s linear infinite' }} />
+              <p style={{ fontSize: 12, color: '#8b8b8b' }}>Carregando seus pedidos...</p>
+            </div>
+          ) : orders.length === 0 ? (
+            <div style={{ padding: '14px 16px', borderRadius: 14, background: '#0d0d0f', border: '1px solid rgba(255,255,255,0.06)' }}>
+              <p style={{ fontSize: 13, color: '#d4d4d8', fontWeight: 700, marginBottom: 4 }}>Você ainda não tem pedidos.</p>
+              <p style={{ fontSize: 12, color: '#7d7d84', lineHeight: 1.6 }}>Assim que comprar, seus pagamentos e entregas vão aparecer aqui automaticamente.</p>
+            </div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              {orders.slice(0, compact ? 3 : 8).map((order) => (
+                <div key={order.id} style={{ padding: '14px 16px', borderRadius: 14, background: '#0d0d0f', border: '1px solid rgba(255,255,255,0.06)' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 6 }}>
+                    <strong style={{ fontSize: 13, color: '#fff' }}>#{order.id.slice(-8).toUpperCase()}</strong>
+                    <span style={{ fontSize: 11, color: '#a855f7', fontWeight: 800 }}>{getOrderStatusLabel(order.status)}</span>
+                  </div>
+                  <p style={{ fontSize: 12, color: '#d1d5db', marginBottom: 5 }}>
+                    {order.items.map((item) => `${item.productName} x${item.quantity}`).join(' · ')}
+                  </p>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, fontSize: 11.5, color: '#7d7d84', flexWrap: 'wrap' }}>
+                    <span>{order.paymentMethod}</span>
+                    <span>R$ {order.total.toFixed(2).replace('.', ',')}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }

@@ -4,6 +4,7 @@ import { createPagBankCheckout, getPagBankConfig } from '../lib/pagbank';
 import { quoteShipping } from '../lib/shipping';
 import { getProductPricing, getStorePricingSettings } from '../lib/storePricing';
 import { getStoreSettingsMap, parseBool, parseNumber } from '../lib/storeSettings';
+import { requireAuth, type AuthRequest } from '../middleware/auth';
 
 const router = Router();
 
@@ -12,7 +13,7 @@ const normalizeEmail = (value: unknown) => String(value ?? '').trim().toLowerCas
 const normalizeCpf = (value: unknown) => String(value ?? '').replace(/\D/g, '').trim();
 const normalizePhone = (value: unknown) => String(value ?? '').replace(/\D/g, '').trim();
 
-router.post('/', async (req, res) => {
+router.post('/', requireAuth, async (req: AuthRequest, res) => {
   try {
     const {
       customerName,
@@ -27,21 +28,39 @@ router.post('/', async (req, res) => {
       discount,
       installments,
       shippingQuote,
+      benefitMode,
     } = req.body;
 
-    if (!customerName || !customerEmail || !items?.length || !paymentMethod) {
+    if (!items?.length || !paymentMethod) {
       return res.status(400).json({ error: 'Dados incompletos' });
     }
 
-    const normalizedCustomerEmail = normalizeEmail(customerEmail);
+    const userId = String(req.user?.id || '').trim();
+    if (!userId) {
+      return res.status(401).json({ error: 'Faça login para continuar' });
+    }
+
+    const accountUser = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true, name: true, email: true, active: true },
+    });
+
+    if (!accountUser || !accountUser.active) {
+      return res.status(401).json({ error: 'Sua sessão não está mais ativa. Entre novamente.' });
+    }
+
+    const normalizedCustomerEmail = normalizeEmail(customerEmail) || accountUser.email;
     const normalizedCustomerCpf = normalizeCpf(customerCpf) || undefined;
     const normalizedCustomerPhone = normalizePhone(customerPhone) || undefined;
+    const normalizedCustomerName = String(customerName ?? accountUser.name).trim() || accountUser.name;
 
     const selectedDeliveryMethod = deliveryMethod === 'pickup' ? 'pickup' : 'delivery';
     const normalizedAddress = address && typeof address === 'object' ? address : null;
     const paymentMethodText = String(paymentMethod).trim();
     const isPixPayment = paymentMethodText.toLowerCase().includes('pix');
     const isCardPayment = paymentMethodText.toLowerCase().includes('cart');
+    const selectedBenefitMode =
+      isCardPayment ? 'cashback' : benefitMode === 'cashback' ? 'cashback' : 'pix_discount';
 
     const [settings, pricingSettings, pagBankConfig] = await Promise.all([
       getStoreSettingsMap(prisma),
@@ -95,15 +114,17 @@ router.post('/', async (req, res) => {
       }
     }
 
+    const priceMode = isPixPayment && selectedBenefitMode === 'pix_discount' ? 'pix' : 'card';
+
     const baseSubtotal = items.reduce((acc: number, item: { productId: string; quantity: number }) => {
       const prod = products.find((product) => product.id === item.productId)!;
-      const pricing = getProductPricing(prod, pricingSettings, item.quantity, isPixPayment ? 'pix' : 'card');
+      const pricing = getProductPricing(prod, pricingSettings, item.quantity, priceMode);
       return acc + pricing.baseTotalPrice;
     }, 0);
     const itemCount = items.reduce((acc: number, item: { quantity: number }) => acc + Math.max(0, Number(item.quantity) || 0), 0);
     const productOfferDiscount = items.reduce((acc: number, item: { productId: string; quantity: number }) => {
       const prod = products.find((product) => product.id === item.productId)!;
-      const pricing = getProductPricing(prod, pricingSettings, item.quantity, isPixPayment ? 'pix' : 'card');
+      const pricing = getProductPricing(prod, pricingSettings, item.quantity, priceMode);
       return acc + pricing.comboSavings;
     }, 0);
     const subtotal = +(baseSubtotal - productOfferDiscount).toFixed(2);
@@ -185,7 +206,7 @@ router.post('/', async (req, res) => {
           : manualShippingMessage;
 
     const total = +Math.max(0, subtotal - discountAmount + shippingAmount).toFixed(2);
-    const cashback = +(total * 0.05).toFixed(2);
+    const cashback = selectedBenefitMode === 'cashback' ? +(total * 0.05).toFixed(2) : 0;
     const paymentMethodLabel = isPixPayment
       ? 'PagBank PIX'
       : isCardPayment
@@ -204,7 +225,7 @@ router.post('/', async (req, res) => {
     if (!customer) {
       customer = await prisma.customer.create({
         data: {
-          name: customerName,
+          name: normalizedCustomerName,
           email: normalizedCustomerEmail,
           phone: normalizedCustomerPhone,
           cpf: normalizedCustomerCpf,
@@ -216,7 +237,7 @@ router.post('/', async (req, res) => {
       customer = await prisma.customer.update({
         where: { id: customer.id },
         data: {
-          name: customerName,
+          name: normalizedCustomerName,
           phone: normalizedCustomerPhone,
           city: normalizedAddress?.cidade ?? customer.city,
           state: normalizedAddress?.estado ?? customer.state,
@@ -231,7 +252,7 @@ router.post('/', async (req, res) => {
       const createdOrder = await tx.order.create({
         data: {
           customerId: customer.id,
-          customerName,
+          customerName: normalizedCustomerName,
           customerEmail: normalizedCustomerEmail,
           customerPhone: normalizedCustomerPhone,
           customerCpf: normalizedCustomerCpf,
@@ -263,6 +284,7 @@ router.post('/', async (req, res) => {
               provider: pagBankConfig ? 'pagbank' : 'manual',
               method: isPixPayment ? 'PIX' : isCardPayment ? 'CREDIT_CARD' : paymentMethodText,
               installments: requestedInstallments,
+              benefitMode: selectedBenefitMode,
               checkoutEligible: pagBankConfig
                 ? (selectedDeliveryMethod === 'pickup' || freeShippingApplied || calculatedShippingQuote !== null)
                 : false,
@@ -275,7 +297,7 @@ router.post('/', async (req, res) => {
             create: items.map((item: { productId: string; productName: string; quantity: number; size: string; color: string }) => {
               const prod = products.find((product) => product.id === item.productId)!;
               const productPricing = getProductPricing(prod, pricingSettings);
-              const unitPrice = isPixPayment ? productPricing.pixPrice : prod.price;
+              const unitPrice = isPixPayment && selectedBenefitMode === 'pix_discount' ? productPricing.pixPrice : prod.price;
               return {
                 productId: item.productId,
                 productName: item.productName,
@@ -363,7 +385,7 @@ router.post('/', async (req, res) => {
       try {
         const checkout = await createPagBankCheckout(pagBankConfig, {
           orderId: order.id,
-          customerName,
+          customerName: normalizedCustomerName,
           customerEmail: normalizedCustomerEmail,
           customerPhone: normalizedCustomerPhone,
           customerCpf: normalizedCustomerCpf,
@@ -371,7 +393,9 @@ router.post('/', async (req, res) => {
           paymentMethod: isPixPayment ? 'PIX' : 'CREDIT_CARD',
           items: items.map((item: { productId: string; productName: string; quantity: number }) => {
             const prod = products.find((product) => product.id === item.productId)!;
-            const unitPrice = isPixPayment ? getProductPricing(prod, pricingSettings).pixPrice : prod.price;
+            const unitPrice = isPixPayment && selectedBenefitMode === 'pix_discount'
+              ? getProductPricing(prod, pricingSettings).pixPrice
+              : prod.price;
             return {
               referenceId: item.productId,
               name: item.productName,
@@ -450,6 +474,30 @@ router.post('/', async (req, res) => {
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: 'Erro ao criar pedido' });
+  }
+});
+
+router.get('/mine', requireAuth, async (req: AuthRequest, res) => {
+  try {
+    const email = String(req.user?.email || '').trim().toLowerCase();
+    if (!email) {
+      return res.status(401).json({ error: 'Faça login para ver seus pedidos' });
+    }
+
+    const orders = await prisma.order.findMany({
+      where: {
+        OR: [
+          { customerEmail: email },
+          { customer: { email } },
+        ],
+      },
+      include: { items: true },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    res.json(orders);
+  } catch {
+    res.status(500).json({ error: 'Erro ao buscar pedidos' });
   }
 });
 

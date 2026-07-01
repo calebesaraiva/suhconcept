@@ -1,7 +1,32 @@
 const BASE = '/api';
+const TOKEN_KEY = 'suh_token';
+const USER_KEY = 'suh_user';
 
 function getToken() {
-  return localStorage.getItem('suh_token');
+  return localStorage.getItem(TOKEN_KEY);
+}
+
+export function getStoredToken() {
+  return localStorage.getItem(TOKEN_KEY);
+}
+
+export function getStoredUser(): ApiUser | null {
+  try {
+    const raw = localStorage.getItem(USER_KEY);
+    return raw ? JSON.parse(raw) as ApiUser : null;
+  } catch {
+    return null;
+  }
+}
+
+export function storeSession(token: string, user: ApiUser) {
+  localStorage.setItem(TOKEN_KEY, token);
+  localStorage.setItem(USER_KEY, JSON.stringify(user));
+}
+
+export function clearSession() {
+  localStorage.removeItem(TOKEN_KEY);
+  localStorage.removeItem(USER_KEY);
 }
 
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
@@ -44,6 +69,7 @@ export interface CreateOrderPayload {
   customerPhone?: string; customerCpf?: string;
   items: { productId: string; productName: string; quantity: number; price: number; pixPrice: number; size: string; color: string }[];
   paymentMethod: string; deliveryMethod: string;
+  benefitMode?: 'pix_discount' | 'cashback';
   installments?: number;
   address?: Record<string, string>;
   shippingQuote?: { serviceCode: string; serviceName?: string; price?: number; deadlineDays?: number; deadlineText?: string };
@@ -107,6 +133,12 @@ export interface OrderPaymentInfo {
 
 export interface ApiUser {
   id: string; name: string; email: string; role: string;
+}
+
+export interface SocialProviderStatus {
+  provider: 'google' | 'apple';
+  enabled: boolean;
+  label: string;
 }
 
 export interface DashboardUser {
@@ -186,6 +218,7 @@ export const api = {
         method: 'POST',
         body: JSON.stringify(data),
       }),
+    mine: () => request<ApiOrder[]>('/orders/mine'),
     get: (id: string) => request<ApiOrder>(`/orders/${id}`),
     paymentStatus: (id: string) =>
       request<{ order: ApiOrder; payment: Record<string, unknown> | null }>(`/payments/pagbank/orders/${id}/status`),
@@ -203,6 +236,7 @@ export const api = {
         body: JSON.stringify({ name, email, password }),
       }),
     me: () => request<ApiUser>('/auth/me'),
+    providers: () => request<SocialProviderStatus[]>('/auth/providers'),
   },
 
   newsletter: {

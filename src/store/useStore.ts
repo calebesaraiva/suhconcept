@@ -38,6 +38,7 @@ export interface CartItem {
 interface StoreState {
   cart: CartItem[];
   wishlist: string[];
+  checkoutBenefitMode: 'pix_discount' | 'cashback';
   currentView: 'store' | 'dashboard';
   dashboardSection: string;
   searchQuery: string;
@@ -49,6 +50,7 @@ interface StoreState {
   updateQuantity: (productId: string, size: string, color: string, qty: number) => void;
   toggleWishlist: (productId: string) => void;
   clearCart: () => void;
+  setCheckoutBenefitMode: (mode: 'pix_discount' | 'cashback') => void;
   setCurrentView: (view: 'store' | 'dashboard') => void;
   setDashboardSection: (s: string) => void;
   setSearchQuery: (q: string) => void;
@@ -59,6 +61,7 @@ interface StoreState {
 export const useStore = create<StoreState>()(persist((set, get) => ({
   cart: [],
   wishlist: [],
+  checkoutBenefitMode: 'pix_discount',
   currentView: 'store',
   dashboardSection: 'overview',
   searchQuery: '',
@@ -93,6 +96,7 @@ export const useStore = create<StoreState>()(persist((set, get) => ({
     })),
 
   clearCart: () => set({ cart: [] }),
+  setCheckoutBenefitMode: mode => set({ checkoutBenefitMode: mode }),
   setCurrentView: view => set({ currentView: view }),
   setDashboardSection: s => set({ dashboardSection: s }),
   setSearchQuery: q => set({ searchQuery: q }),
@@ -106,5 +110,5 @@ export const useStore = create<StoreState>()(persist((set, get) => ({
   name: 'suh-store',
   storage: createJSONStorage(() => localStorage),
   // Persiste apenas carrinho e favoritos — estado de UI/sessão não é salvo
-  partialize: (state) => ({ cart: state.cart, wishlist: state.wishlist }),
+  partialize: (state) => ({ cart: state.cart, wishlist: state.wishlist, checkoutBenefitMode: state.checkoutBenefitMode }),
 }));

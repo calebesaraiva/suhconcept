@@ -3,6 +3,7 @@ import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { prisma } from '../lib/prisma';
 import { isStaffRole, normalizeRole } from '../lib/roles';
+import { requireAuth, type AuthRequest } from '../middleware/auth';
 
 const router = Router();
 const SECRET = process.env.JWT_SECRET || 'suh-secret-2026';
@@ -105,6 +106,47 @@ router.get('/me', async (req, res) => {
     res.json({ id: user.id, name: user.name, email: user.email, role: normalizeRole(user.role) });
   } catch {
     res.status(401).json({ error: 'Token inválido' });
+  }
+});
+
+router.get('/providers', (_req, res) => {
+  res.json([
+    {
+      provider: 'google',
+      enabled: Boolean(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET),
+      label: 'Google',
+    },
+    {
+      provider: 'apple',
+      enabled: Boolean(process.env.APPLE_CLIENT_ID && process.env.APPLE_TEAM_ID && process.env.APPLE_KEY_ID && process.env.APPLE_PRIVATE_KEY),
+      label: 'iCloud / Apple',
+    },
+  ]);
+});
+
+router.get('/orders', requireAuth, async (req: AuthRequest, res) => {
+  try {
+    const email = String(req.user?.email || '').trim().toLowerCase();
+    if (!email) {
+      return res.status(401).json({ error: 'Sessão inválida' });
+    }
+
+    const orders = await prisma.order.findMany({
+      where: {
+        OR: [
+          { customerEmail: email },
+          { customer: { email } },
+        ],
+      },
+      include: {
+        items: true,
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    res.json(orders);
+  } catch {
+    res.status(500).json({ error: 'Erro ao carregar seus pedidos' });
   }
 });
 

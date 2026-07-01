@@ -1,18 +1,19 @@
 import { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import {
   ChevronRight, CreditCard, QrCode, Lock,
   CheckCircle, ChevronLeft, Zap, Coins,
   Tag, Loader2, Store, MapPin, Clock,
 } from 'lucide-react';
 import { useStore } from '../store/useStore';
-import { api, type ShippingQuoteResponse } from '../lib/api';
+import { api, getStoredToken, type ApiUser, type ShippingQuoteResponse } from '../lib/api';
 import { getProductPricing, resolveStorePricingSettings } from '../lib/storePricing';
 
 const STEPS = ['Dados', 'Pagamento', 'Revisão'];
 type PayMethod = 'cartao' | 'pix';
 type DeliveryMethod = 'delivery' | 'pickup';
+type BenefitMode = 'pix_discount' | 'cashback';
 
 const inp: React.CSSProperties = {
   width: '100%', background: '#0d0d0d',
@@ -31,7 +32,8 @@ const focusOut = (e: React.FocusEvent<HTMLInputElement | HTMLSelectElement>) =>
   (e.target.style.borderColor = 'rgba(255,255,255,0.09)');
 
 export default function CheckoutPage() {
-  const { cart, clearCart, showToast } = useStore();
+  const navigate = useNavigate();
+  const { cart, clearCart, showToast, checkoutBenefitMode, setCheckoutBenefitMode } = useStore();
   const [step, setStep] = useState(0);
   const [payMethod, setPayMethod] = useState<PayMethod>('cartao');
   const [deliveryMethod, setDeliveryMethod] = useState<DeliveryMethod>('delivery');
@@ -49,6 +51,8 @@ export default function CheckoutPage() {
   const [shippingError, setShippingError] = useState('');
   const [cepLookupLoading, setCepLookupLoading] = useState(false);
   const [settings, setSettings] = useState<Record<string, string>>({});
+  const [checkingSession, setCheckingSession] = useState(() => !!getStoredToken());
+  const [currentUser, setCurrentUser] = useState<ApiUser | null>(null);
 
   const deliveryEnabled = settings.deliveryEnabled !== 'false';
   const pickupEnabled = settings.pickupEnabled !== 'false';
@@ -66,28 +70,31 @@ export default function CheckoutPage() {
     !cardEnabled && pixEnabled ? 'pix' :
     !pixEnabled && cardEnabled ? 'cartao' :
     payMethod;
+  const selectedBenefitMode: BenefitMode = resolvedPayMethod === 'cartao' ? 'cashback' : checkoutBenefitMode;
+  const usesPixDiscount = resolvedPayMethod === 'pix' && selectedBenefitMode === 'pix_discount';
   const cardSubtotal = cart.reduce((a, i) => a + getProductPricing(i.product, pricingSettings, i.quantity, 'card').baseTotalPrice, 0);
   const pixSubtotal = cart.reduce((a, i) => a + getProductPricing(i.product, pricingSettings, i.quantity, 'pix').baseTotalPrice, 0);
   const cardComboDiscount = cart.reduce((a, i) => a + getProductPricing(i.product, pricingSettings, i.quantity, 'card').comboSavings, 0);
   const pixComboDiscount = cart.reduce((a, i) => a + getProductPricing(i.product, pricingSettings, i.quantity, 'pix').comboSavings, 0);
   const subtotal = +(cardSubtotal - cardComboDiscount).toFixed(2);
   const pixTotal = +(pixSubtotal - pixComboDiscount).toFixed(2);
-  const pixDiscount = +(cardSubtotal - pixSubtotal).toFixed(2);
-  const comboDiscount = resolvedPayMethod === 'pix' ? pixComboDiscount : cardComboDiscount;
+  const pixDiscount = usesPixDiscount ? +(cardSubtotal - pixSubtotal).toFixed(2) : 0;
+  const comboDiscount = usesPixDiscount ? pixComboDiscount : cardComboDiscount;
   const [form, setForm] = useState({
     nome: '', cpf: '', email: '', tel: '',
     cep: '', rua: '', num: '', comp: '', bairro: '', cidade: '', estado: '',
     card_num: '', card_name: '', card_exp: '', card_cvv: '', parcelas: '1',
   });
   const itemCount = cart.reduce((a, i) => a + i.quantity, 0);
+  const subtotalBeforeCoupon = usesPixDiscount ? pixTotal : subtotal;
   const freeShippingApplied =
     deliveryMethod === 'delivery' &&
-    (freeShipPromo || subtotal >= freeShipThreshold || couponFreeShipping);
+    (freeShipPromo || subtotalBeforeCoupon >= freeShipThreshold || couponFreeShipping);
   const cepDigits = form.cep.replace(/\D/g, '');
   const shippingAmount = deliveryMethod === 'delivery' && !freeShippingApplied ? shippingQuote?.selected.price ?? 0 : 0;
-  const baseTotal = resolvedPayMethod === 'pix' ? pixTotal - couponDiscount : subtotal - couponDiscount;
+  const baseTotal = subtotalBeforeCoupon - couponDiscount;
   const total = +(baseTotal + shippingAmount).toFixed(2);
-  const cashback = Math.max(0, total) * 0.05;
+  const cashback = selectedBenefitMode === 'cashback' ? Math.max(0, total) * 0.05 : 0;
 
   useEffect(() => {
     api.settings.get()
@@ -101,6 +108,37 @@ export default function CheckoutPage() {
       .catch(() => {
         // Mantem os defaults caso o backend de configuracoes nao responda.
       });
+  }, []);
+
+  useEffect(() => {
+    const token = getStoredToken();
+    if (!token) {
+      setCheckingSession(false);
+      return;
+    }
+
+    let active = true;
+    api.auth.me()
+      .then((user) => {
+        if (!active) return;
+        setCurrentUser(user);
+        setForm((current) => ({
+          ...current,
+          nome: current.nome || user.name,
+          email: user.email,
+        }));
+      })
+      .catch(() => {
+        if (!active) return;
+        setCurrentUser(null);
+      })
+      .finally(() => {
+        if (active) setCheckingSession(false);
+      });
+
+    return () => {
+      active = false;
+    };
   }, []);
 
   useEffect(() => {
@@ -123,10 +161,10 @@ export default function CheckoutPage() {
     const timer = window.setTimeout(() => {
       api.shipping.quote({
         cepDestino: cepDigits,
-        subtotal,
+        subtotal: subtotalBeforeCoupon,
         itemCount,
         serviceCode: shippingQuote?.selected.serviceCode,
-        freeShipping: freeShipPromo || subtotal >= freeShipThreshold || couponFreeShipping,
+        freeShipping: freeShipPromo || subtotalBeforeCoupon >= freeShipThreshold || couponFreeShipping,
         cidade: form.cidade,
         estado: form.estado,
       })
@@ -149,7 +187,7 @@ export default function CheckoutPage() {
       cancelled = true;
       window.clearTimeout(timer);
     };
-  }, [cepDigits, deliveryMethod, subtotal, itemCount, freeShipPromo, freeShipThreshold, couponFreeShipping, form.cidade, form.estado]);
+  }, [cepDigits, deliveryMethod, subtotalBeforeCoupon, itemCount, freeShipPromo, freeShipThreshold, couponFreeShipping, form.cidade, form.estado]);
 
   useEffect(() => {
     if (deliveryMethod !== 'delivery' || cepDigits.length !== 8) return;
@@ -196,7 +234,7 @@ export default function CheckoutPage() {
     const code = coupon.trim();
     if (!code) return;
     try {
-      const orderBaseTotal = resolvedPayMethod === 'pix' ? pixTotal : subtotal;
+      const orderBaseTotal = subtotalBeforeCoupon;
       const result = await api.coupons.validate(code, orderBaseTotal);
       setCouponDiscount(result.discount);
       setCouponApplied(true);
@@ -260,7 +298,7 @@ export default function CheckoutPage() {
           productId: i.product.id,
           productName: i.product.name,
           quantity: i.quantity,
-          price: resolvedPayMethod === 'pix' ? pricing.pixPrice : i.product.price,
+          price: usesPixDiscount ? pricing.pixPrice : i.product.price,
           pixPrice: pricing.pixPrice,
           size: i.size,
           color: i.color,
@@ -274,6 +312,7 @@ export default function CheckoutPage() {
         customerCpf: form.cpf,
         items,
         paymentMethod: resolvedPayMethod === 'cartao' ? `Cartão ${form.parcelas}x` : 'PIX',
+        benefitMode: selectedBenefitMode,
         installments: resolvedPayMethod === 'cartao' ? Number(form.parcelas) : 1,
         deliveryMethod,
         address: deliveryMethod === 'delivery' ? {
@@ -324,10 +363,17 @@ export default function CheckoutPage() {
         <p style={{ color: '#555', marginBottom: 20, lineHeight: 1.6 }}>
           {deliveryMethod === 'delivery' ? shippingMessage : 'Seu pedido ficou registrado com retirada na loja.'}
         </p>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '12px 20px', borderRadius: 10, background: 'rgba(168,85,247,0.08)', border: '1px solid rgba(168,85,247,0.2)', marginBottom: 28 }}>
-          <Coins size={15} style={{ color: '#a855f7' }} />
-          <p style={{ fontSize: 13, color: '#a855f7', fontWeight: 700 }}>R$ {cashback.toFixed(2).replace('.', ',')} de cashback na sua carteira!</p>
-        </div>
+        {cashback > 0 ? (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '12px 20px', borderRadius: 10, background: 'rgba(168,85,247,0.08)', border: '1px solid rgba(168,85,247,0.2)', marginBottom: 28 }}>
+            <Coins size={15} style={{ color: '#a855f7' }} />
+            <p style={{ fontSize: 13, color: '#a855f7', fontWeight: 700 }}>R$ {cashback.toFixed(2).replace('.', ',')} de cashback na sua carteira!</p>
+          </div>
+        ) : (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '12px 20px', borderRadius: 10, background: 'rgba(34,197,94,0.08)', border: '1px solid rgba(34,197,94,0.18)', marginBottom: 28 }}>
+            <Zap size={15} style={{ color: '#22C55E' }} />
+            <p style={{ fontSize: 13, color: '#22C55E', fontWeight: 700 }}>Desconto PIX aplicado no total da compra.</p>
+          </div>
+        )}
         <Link to="/" className="btn-gradient no-underline" style={{ padding: '13px 32px', borderRadius: 10, fontSize: 13, letterSpacing: '0.06em' }}>
           CONTINUAR COMPRANDO
         </Link>
@@ -340,6 +386,44 @@ export default function CheckoutPage() {
       <p style={{ fontSize: 48, marginBottom: 16, opacity: 0.1 }}>🛍️</p>
       <p style={{ fontWeight: 600, color: '#555', marginBottom: 20 }}>Sua sacola está vazia</p>
       <Link to="/" className="btn-gradient no-underline" style={{ padding: '12px 28px', borderRadius: 10, fontSize: 13 }}>Voltar para a loja</Link>
+    </div>
+  );
+
+  if (checkingSession) return (
+    <div style={{ minHeight: '60vh', display: 'grid', placeItems: 'center', padding: '60px 24px' }}>
+      <div style={{ display: 'grid', placeItems: 'center', gap: 12 }}>
+        <Loader2 size={22} style={{ color: '#a855f7', animation: 'spin 1s linear infinite' }} />
+        <p style={{ fontSize: 13, color: '#8b8b8b' }}>Verificando sua conta para liberar o checkout...</p>
+      </div>
+    </div>
+  );
+
+  if (!currentUser) return (
+    <div style={{ minHeight: '70vh', display: 'grid', placeItems: 'center', padding: '32px 16px' }}>
+      <div style={{ maxWidth: 480, width: '100%', background: '#111', borderRadius: 20, border: '1px solid rgba(255,255,255,0.07)', padding: '28px 24px', textAlign: 'center' }}>
+        <div style={{ width: 64, height: 64, borderRadius: '50%', margin: '0 auto 18px', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(168,85,247,0.1)', border: '1px solid rgba(168,85,247,0.22)' }}>
+          <Lock size={24} style={{ color: '#a855f7' }} />
+        </div>
+        <p style={{ fontSize: 11, color: '#a855f7', fontWeight: 800, letterSpacing: '0.16em', textTransform: 'uppercase', marginBottom: 8 }}>
+          Checkout protegido
+        </p>
+        <h1 style={{ fontSize: 28, color: '#fff', fontWeight: 900, marginBottom: 10 }}>Entre para finalizar a compra</h1>
+        <p style={{ fontSize: 14, color: '#8b8b93', lineHeight: 1.7, marginBottom: 22 }}>
+          O login é obrigatório para acompanhar pedidos, pagamento, preparo e entrega dentro da sua conta.
+        </p>
+        <div style={{ display: 'flex', gap: 10, justifyContent: 'center', flexWrap: 'wrap' }}>
+          <Link to="/conta?redirect=/checkout" className="btn-gradient no-underline" style={{ padding: '13px 22px', borderRadius: 12, fontSize: 12, letterSpacing: '0.08em' }}>
+            ENTRAR OU CRIAR CONTA
+          </Link>
+          <button
+            type="button"
+            onClick={() => navigate('/')}
+            style={{ padding: '13px 22px', borderRadius: 12, border: '1px solid rgba(255,255,255,0.08)', background: 'transparent', color: '#9a9a9a', fontWeight: 800, fontSize: 12, letterSpacing: '0.08em', cursor: 'pointer', fontFamily: 'inherit' }}
+          >
+            VOLTAR À LOJA
+          </button>
+        </div>
+      </div>
     </div>
   );
 
@@ -535,6 +619,11 @@ export default function CheckoutPage() {
 
             {resolvedPayMethod === 'cartao' && cardEnabled && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                <div style={{ padding: '14px 16px', borderRadius: 12, background: 'rgba(168,85,247,0.06)', border: '1px solid rgba(168,85,247,0.16)' }}>
+                  <p style={{ fontSize: 12, color: '#d7b8ff', lineHeight: 1.7 }}>
+                    No cartão, o benefício ativo é <strong style={{ color: '#fff' }}>cashback de 5%</strong>. O desconto PIX não acumula com cartão.
+                  </p>
+                </div>
                 <div>
                   <label style={lbl}>Parcelamento</label>
                   <select style={{ ...inp, cursor: 'pointer', appearance: 'none' as const }} value={form.parcelas} onChange={set('parcelas')} onFocus={focusIn} onBlur={focusOut}>
@@ -555,15 +644,61 @@ export default function CheckoutPage() {
 
             {resolvedPayMethod === 'pix' && pixEnabled && (
               <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 14, padding: '8px 0' }}>
+                <div style={{ width: '100%', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                  <button
+                    type="button"
+                    onClick={() => setCheckoutBenefitMode('pix_discount')}
+                    style={{
+                      padding: '14px 14px',
+                      borderRadius: 12,
+                      border: `1px solid ${selectedBenefitMode === 'pix_discount' ? 'rgba(34,197,94,0.28)' : 'rgba(255,255,255,0.08)'}`,
+                      background: selectedBenefitMode === 'pix_discount' ? 'rgba(34,197,94,0.08)' : 'rgba(255,255,255,0.02)',
+                      textAlign: 'left',
+                      cursor: 'pointer',
+                      fontFamily: 'inherit',
+                    }}
+                  >
+                    <p style={{ fontSize: 10.5, color: '#8b8b93', fontWeight: 900, letterSpacing: '0.1em', textTransform: 'uppercase', marginBottom: 5 }}>
+                      Escolha no PIX
+                    </p>
+                    <p style={{ fontSize: 13.5, color: '#fff', fontWeight: 800, marginBottom: 4 }}>Desconto de 5%</p>
+                    <p style={{ fontSize: 11, color: '#6fce8b', lineHeight: 1.45 }}>Você paga menos agora.</p>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setCheckoutBenefitMode('cashback')}
+                    style={{
+                      padding: '14px 14px',
+                      borderRadius: 12,
+                      border: `1px solid ${selectedBenefitMode === 'cashback' ? 'rgba(168,85,247,0.28)' : 'rgba(255,255,255,0.08)'}`,
+                      background: selectedBenefitMode === 'cashback' ? 'rgba(168,85,247,0.08)' : 'rgba(255,255,255,0.02)',
+                      textAlign: 'left',
+                      cursor: 'pointer',
+                      fontFamily: 'inherit',
+                    }}
+                  >
+                    <p style={{ fontSize: 10.5, color: '#8b8b93', fontWeight: 900, letterSpacing: '0.1em', textTransform: 'uppercase', marginBottom: 5 }}>
+                      Escolha no PIX
+                    </p>
+                    <p style={{ fontSize: 13.5, color: '#fff', fontWeight: 800, marginBottom: 4 }}>Cashback de 5%</p>
+                    <p style={{ fontSize: 11, color: '#d5b7ff', lineHeight: 1.45 }}>Você recebe crédito depois.</p>
+                  </button>
+                </div>
                 <div style={{ width: 110, height: 110, borderRadius: 12, background: '#fff', padding: 10, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                   <QrCode size={82} style={{ color: '#000' }} />
                 </div>
                 <div style={{ textAlign: 'center', padding: '12px 24px', borderRadius: 10, background: 'rgba(34,197,94,0.07)', border: '1px solid rgba(34,197,94,0.18)' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6, justifyContent: 'center', marginBottom: 4 }}>
-                    <Zap size={14} style={{ color: '#22C55E' }} />
-                    <p style={{ fontWeight: 900, fontSize: 22, color: '#22C55E' }}>R$ {pixTotal.toFixed(2).replace('.', ',')}</p>
+                    {selectedBenefitMode === 'pix_discount' ? <Zap size={14} style={{ color: '#22C55E' }} /> : <Coins size={14} style={{ color: '#a855f7' }} />}
+                    <p style={{ fontWeight: 900, fontSize: 22, color: selectedBenefitMode === 'pix_discount' ? '#22C55E' : '#fff' }}>
+                      R$ {subtotalBeforeCoupon.toFixed(2).replace('.', ',')}
+                    </p>
                   </div>
-                  <p style={{ fontSize: 12, color: '#22C55E', fontWeight: 600 }}>Economia de R$ {pixDiscount.toFixed(2).replace('.', ',')}</p>
+                  <p style={{ fontSize: 12, color: selectedBenefitMode === 'pix_discount' ? '#22C55E' : '#d5b7ff', fontWeight: 600 }}>
+                    {selectedBenefitMode === 'pix_discount'
+                      ? `Economia de R$ ${pixDiscount.toFixed(2).replace('.', ',')}`
+                      : `Você recebe R$ ${cashback.toFixed(2).replace('.', ',')} de cashback`}
+                  </p>
                 </div>
                 <p style={{ fontSize: 11, color: '#999', textAlign: 'center' }}>O QR Code real será exibido no checkout seguro do PagBank.</p>
               </div>
@@ -607,9 +742,9 @@ export default function CheckoutPage() {
                     {item.color ? `${item.color} · ` : ''}{item.size} · Qtd: {item.quantity}
                   </p>
                   <p style={{ fontWeight: 900, color: '#fff', fontSize: 14 }}>
-                    R$ {getProductPricing(item.product, pricingSettings, item.quantity, resolvedPayMethod === 'pix' ? 'pix' : 'card').totalPrice.toFixed(2).replace('.', ',')}
+                    R$ {getProductPricing(item.product, pricingSettings, item.quantity, usesPixDiscount ? 'pix' : 'card').totalPrice.toFixed(2).replace('.', ',')}
                   </p>
-                  {getProductPricing(item.product, pricingSettings, item.quantity, resolvedPayMethod === 'pix' ? 'pix' : 'card').comboApplied && (
+                  {getProductPricing(item.product, pricingSettings, item.quantity, usesPixDiscount ? 'pix' : 'card').comboApplied && (
                     <p style={{ fontSize: 10.5, color: '#FFB800', marginTop: 3 }}>Combo aplicado nesta peça</p>
                   )}
                 </div>
@@ -623,7 +758,13 @@ export default function CheckoutPage() {
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12 }}>
                   <span style={{ color: '#555' }}>Pagamento</span>
-                  <span style={{ color: '#ccc' }}>{resolvedPayMethod === 'cartao' ? `Cartão ${form.parcelas}x${Number(form.parcelas) > interestFreeInstallments ? ' com juros' : ''}` : 'PIX'}</span>
+                  <span style={{ color: '#ccc' }}>
+                    {resolvedPayMethod === 'cartao'
+                      ? `Cartão ${form.parcelas}x${Number(form.parcelas) > interestFreeInstallments ? ' com juros' : ''} · cashback`
+                      : selectedBenefitMode === 'pix_discount'
+                        ? 'PIX · desconto de 5%'
+                        : 'PIX · cashback'}
+                  </span>
                 </div>
                 {deliveryMethod === 'delivery' && (
                   <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, gap: 12 }}>
@@ -662,7 +803,7 @@ export default function CheckoutPage() {
               <p style={{ fontSize: 10.5, color: '#444', marginTop: 2 }}>{item.size} · ×{item.quantity}</p>
             </div>
             <p style={{ fontSize: 12, fontWeight: 800, color: '#fff', flexShrink: 0 }}>
-              R$ {getProductPricing(item.product, pricingSettings, item.quantity, resolvedPayMethod === 'pix' ? 'pix' : 'card').totalPrice.toFixed(2).replace('.', ',')}
+              R$ {getProductPricing(item.product, pricingSettings, item.quantity, usesPixDiscount ? 'pix' : 'card').totalPrice.toFixed(2).replace('.', ',')}
             </p>
           </div>
         ))}
@@ -690,9 +831,9 @@ export default function CheckoutPage() {
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: '#555' }}>
-          <span>Subtotal</span><span>R$ {(resolvedPayMethod === 'pix' ? pixSubtotal : cardSubtotal).toFixed(2).replace('.', ',')}</span>
+          <span>Subtotal</span><span>R$ {(usesPixDiscount ? pixSubtotal : cardSubtotal).toFixed(2).replace('.', ',')}</span>
         </div>
-        {resolvedPayMethod === 'pix' && (
+        {usesPixDiscount && (
           <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: '#22C55E' }}>
             <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}><Zap size={10} />PIX</span>
             <span>−R$ {pixDiscount.toFixed(2).replace('.', ',')}</span>
@@ -730,10 +871,17 @@ export default function CheckoutPage() {
           <span style={{ fontWeight: 800, fontSize: 14, color: '#fff' }}>Total</span>
           <span style={{ fontWeight: 900, fontSize: 20, color: '#fff' }}>R$ {total.toFixed(2).replace('.', ',')}</span>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 12px', borderRadius: 8, background: 'rgba(168,85,247,0.07)', border: '1px solid rgba(168,85,247,0.15)' }}>
-          <Coins size={13} style={{ color: '#a855f7', flexShrink: 0 }} />
-          <span style={{ fontSize: 11.5, color: '#a855f7', fontWeight: 700 }}>+R$ {cashback.toFixed(2).replace('.', ',')} cashback (5%)</span>
-        </div>
+        {cashback > 0 ? (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 12px', borderRadius: 8, background: 'rgba(168,85,247,0.07)', border: '1px solid rgba(168,85,247,0.15)' }}>
+            <Coins size={13} style={{ color: '#a855f7', flexShrink: 0 }} />
+            <span style={{ fontSize: 11.5, color: '#a855f7', fontWeight: 700 }}>+R$ {cashback.toFixed(2).replace('.', ',')} cashback (5%)</span>
+          </div>
+        ) : (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 12px', borderRadius: 8, background: 'rgba(34,197,94,0.07)', border: '1px solid rgba(34,197,94,0.15)' }}>
+            <Zap size={13} style={{ color: '#22C55E', flexShrink: 0 }} />
+            <span style={{ fontSize: 11.5, color: '#22C55E', fontWeight: 700 }}>Desconto PIX aplicado nesta compra</span>
+          </div>
+        )}
       </div>
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 12px', borderRadius: 8, background: 'rgba(34,197,94,0.04)', border: '1px solid rgba(34,197,94,0.1)' }}>

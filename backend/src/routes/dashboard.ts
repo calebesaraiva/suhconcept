@@ -32,6 +32,8 @@ const sanitizeDashboardUser = (user: { id: string; name: string; email: string; 
   createdAt: user.createdAt,
   updatedAt: user.updatedAt,
 });
+const isPickupOrder = (order: { deliveryMethod?: string }) =>
+  String(order.deliveryMethod || '').toLowerCase() === 'pickup';
 const resolvePaymentMethodColor = (method: string) => {
   const normalizedMethod = normalizePaymentMethod(method);
 
@@ -247,14 +249,17 @@ router.patch('/orders/:id/status', requireRole('master', 'manager', 'seller'), a
     const status = String(req.body?.status || '');
     const currentRole = normalizeRole(req.user?.role);
     const validStatuses = isSellerRole(currentRole)
-      ? ['em_preparo', 'saiu_para_entrega']
-      : ['em_preparo', 'saiu_para_entrega', 'cancelado'];
+      ? ['em_preparo', 'enviado', 'saiu_para_entrega', 'entregue']
+      : ['em_preparo', 'enviado', 'saiu_para_entrega', 'entregue', 'cancelado'];
     if (!validStatuses.includes(status)) return res.status(400).json({ error: 'Status inválido' });
     const existingOrder = await prisma.order.findUnique({
       where: { id: orderId },
       include: { items: true },
     });
     if (!existingOrder) return res.status(404).json({ error: 'Pedido não encontrado' });
+    if (status === 'saiu_para_entrega' && isPickupOrder(existingOrder)) {
+      return res.status(400).json({ error: 'Pedidos com retirada não podem ir para entrega' });
+    }
 
     await prisma.order.update({ where: { id: orderId }, data: { status } });
     const order = await prisma.order.findUnique({ where: { id: orderId } });

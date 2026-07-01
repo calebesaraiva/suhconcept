@@ -62,6 +62,8 @@ Campos importantes para a SUH:
 - `PUBLIC_SITE_URL=https://suhconcept.com`
 - `PAGBANK_TOKEN`
 - `FRONTEND_URL`
+- `GOOGLE_CLIENT_ID` e `GOOGLE_CLIENT_SECRET`
+- `APPLE_CLIENT_ID`, `APPLE_TEAM_ID`, `APPLE_KEY_ID` e `APPLE_PRIVATE_KEY`
 
 Webhook do PagBank:
 

@@ -1,17 +1,18 @@
 import { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, ShoppingBag, Trash2, Plus, Minus, Tag, Truck, Lock, Zap, ArrowRight, Coins, MapPin, Loader2, CheckCircle2 } from 'lucide-react';
-import { Link } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { useStore } from '../../store/useStore';
 import { getProductPricing, useStorePricingSettings } from '../../lib/storePricing';
-import { api, type ShippingQuoteResponse } from '../../lib/api';
+import { api, getStoredToken, type ShippingQuoteResponse } from '../../lib/api';
 
 const CASHBACK_RATE = 0.05; // 5%
 
 interface Props { open: boolean; onClose: () => void; }
 
 export default function CartDrawer({ open, onClose }: Props) {
-  const { cart, removeFromCart, updateQuantity } = useStore();
+  const navigate = useNavigate();
+  const { cart, removeFromCart, updateQuantity, checkoutBenefitMode, setCheckoutBenefitMode, showToast } = useStore();
   const settings = useStorePricingSettings();
   const subtotalBase  = cart.reduce((a, i) => a + getProductPricing(i.product, settings, i.quantity, 'card').baseTotalPrice, 0);
   const subtotalCombo = cart.reduce((a, i) => a + getProductPricing(i.product, settings, i.quantity, 'card').comboSavings, 0);
@@ -24,6 +25,7 @@ export default function CartDrawer({ open, onClose }: Props) {
   const progress  = Math.min((subtotal / settings.freeShipThreshold) * 100, 100);
   const pixSaving = subtotalBase - pixBase;
   const cashback  = subtotal * CASHBACK_RATE;
+  const selectedPixTotal = checkoutBenefitMode === 'pix_discount' ? pixTotal : subtotal;
   const formatMoney = (value: number) => `R$ ${value.toFixed(2).replace('.', ',')}`;
   const formatCep = (value: string) => {
     const digits = value.replace(/\D/g, '').slice(0, 8);
@@ -102,6 +104,19 @@ export default function CartDrawer({ open, onClose }: Props) {
         ? 'Confira o CEP informado ou tente novamente.'
         : 'Entrega local em Imperatriz por R$ 10,00. Outras cidades calculam automático.';
   const totalWithShipping = subtotal + (freeShip || !shippingQuote ? 0 : shippingQuote.selected.price);
+  const checkoutTotalWithShipping = selectedPixTotal + (freeShip || !shippingQuote ? 0 : shippingQuote.selected.price);
+
+  const goToCheckout = () => {
+    if (!getStoredToken()) {
+      showToast('Entre na sua conta para finalizar a compra.', 'error');
+      onClose();
+      navigate('/conta?redirect=/checkout');
+      return;
+    }
+
+    onClose();
+    navigate('/checkout');
+  };
 
   return (
     <AnimatePresence>
@@ -277,20 +292,22 @@ export default function CartDrawer({ open, onClose }: Props) {
                     <span style={{ fontSize: 24, lineHeight: 1, color: '#fff', fontWeight: 900 }}>
                       {formatMoney(totalWithShipping)}
                     </span>
-                    <span style={{ fontSize: 11.5, color: '#22C55E', fontWeight: 700 }}>
-                      ou {formatMoney(pixTotal)} no PIX
+                    <span style={{ fontSize: 11.5, color: checkoutBenefitMode === 'pix_discount' ? '#22C55E' : '#a855f7', fontWeight: 700 }}>
+                      {checkoutBenefitMode === 'pix_discount'
+                        ? `ou ${formatMoney(checkoutTotalWithShipping)} no PIX`
+                        : `ganhe ${formatMoney(cashback)} de cashback`}
                     </span>
                   </div>
                 </div>
 
-                <Link
-                  to="/checkout"
-                  onClick={onClose}
-                  className="no-underline cart-quick-checkout-button"
+                <button
+                  type="button"
+                  onClick={goToCheckout}
+                  className="cart-quick-checkout-button"
                   style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8, minWidth: 172, padding: '14px 18px', borderRadius: 14, background: 'linear-gradient(135deg, #a855f7, #FF2DA0)', color: '#fff', fontWeight: 900, fontSize: 13, letterSpacing: '0.06em', boxShadow: '0 16px 28px rgba(168,85,247,0.24)' }}
                 >
-                  <Lock size={15} /> IR AGORA
-                </Link>
+                  <Lock size={15} /> {getStoredToken() ? 'IR AGORA' : 'ENTRAR E COMPRAR'}
+                </button>
               </div>
             )}
 
@@ -378,6 +395,51 @@ export default function CartDrawer({ open, onClose }: Props) {
                   </div>
                 </div>
 
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                  <button
+                    type="button"
+                    onClick={() => setCheckoutBenefitMode('pix_discount')}
+                    style={{
+                      padding: '14px 13px',
+                      borderRadius: 14,
+                      border: `1px solid ${checkoutBenefitMode === 'pix_discount' ? 'rgba(34,197,94,0.34)' : 'rgba(255,255,255,0.08)'}`,
+                      background: checkoutBenefitMode === 'pix_discount' ? 'rgba(34,197,94,0.08)' : 'rgba(255,255,255,0.02)',
+                      textAlign: 'left',
+                      cursor: 'pointer',
+                      fontFamily: 'inherit',
+                    }}
+                  >
+                    <p style={{ fontSize: 10.5, color: '#8b8b93', fontWeight: 800, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 4 }}>
+                      Beneficio PIX
+                    </p>
+                    <p style={{ fontSize: 13, color: '#fff', fontWeight: 800, marginBottom: 4 }}>5% de desconto</p>
+                    <p style={{ fontSize: 11, color: '#6fce8b', lineHeight: 1.45 }}>
+                      Paga menos agora no PIX
+                    </p>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setCheckoutBenefitMode('cashback')}
+                    style={{
+                      padding: '14px 13px',
+                      borderRadius: 14,
+                      border: `1px solid ${checkoutBenefitMode === 'cashback' ? 'rgba(168,85,247,0.34)' : 'rgba(255,255,255,0.08)'}`,
+                      background: checkoutBenefitMode === 'cashback' ? 'rgba(168,85,247,0.08)' : 'rgba(255,255,255,0.02)',
+                      textAlign: 'left',
+                      cursor: 'pointer',
+                      fontFamily: 'inherit',
+                    }}
+                  >
+                    <p style={{ fontSize: 10.5, color: '#8b8b93', fontWeight: 800, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 4 }}>
+                      Beneficio
+                    </p>
+                    <p style={{ fontSize: 13, color: '#fff', fontWeight: 800, marginBottom: 4 }}>5% cashback</p>
+                    <p style={{ fontSize: 11, color: '#d5b7ff', lineHeight: 1.45 }}>
+                      Vale no PIX e no cartao
+                    </p>
+                  </button>
+                </div>
+
                 {/* Summary */}
                 <div className="cart-summary-card" style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: '14px 16px', borderRadius: 10, background: '#111', border: '1px solid rgba(255,255,255,0.06)' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: '#666' }}>
@@ -390,7 +452,7 @@ export default function CartDrawer({ open, onClose }: Props) {
                       <span>– {formatMoney(subtotalCombo)}</span>
                     </div>
                   )}
-                  {pixSaving > 0 && (
+                  {checkoutBenefitMode === 'pix_discount' && pixSaving > 0 && (
                     <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: '#22C55E' }}>
                       <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
                         <Zap size={11} /> Desconto PIX ({settings.pixDiscount}%)
@@ -410,15 +472,30 @@ export default function CartDrawer({ open, onClose }: Props) {
                       <span style={{ display: 'block', fontWeight: 900, fontSize: 14, color: '#fff', marginBottom: 3 }}>Total</span>
                       <span style={{ display: 'block', fontSize: 11, color: '#6d6d74' }}>Pagamento seguro no checkout oficial</span>
                     </div>
-                    <span style={{ fontWeight: 900, fontSize: 22, color: '#fff' }}>{formatMoney(totalWithShipping)}</span>
+                    <span style={{ fontWeight: 900, fontSize: 22, color: '#fff' }}>
+                      {formatMoney(checkoutBenefitMode === 'pix_discount' ? checkoutTotalWithShipping : totalWithShipping)}
+                    </span>
                   </div>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 11.5, gap: 10 }}>
-                    <span style={{ color: '#6d6d74', lineHeight: 1.45 }}>
-                      ou <strong style={{ color: '#22C55E' }}>{formatMoney(pixTotal)}</strong> no PIX
-                    </span>
-                    <span style={{ background: 'rgba(34,197,94,0.1)', color: '#22C55E', padding: '1px 7px', borderRadius: 99, fontSize: 10, fontWeight: 800, border: '1px solid rgba(34,197,94,0.2)' }}>
-                      {settings.pixDiscount}% OFF
-                    </span>
+                    {checkoutBenefitMode === 'pix_discount' ? (
+                      <>
+                        <span style={{ color: '#6d6d74', lineHeight: 1.45 }}>
+                          no PIX com <strong style={{ color: '#22C55E' }}>{settings.pixDiscount}% OFF</strong>
+                        </span>
+                        <span style={{ background: 'rgba(34,197,94,0.1)', color: '#22C55E', padding: '1px 7px', borderRadius: 99, fontSize: 10, fontWeight: 800, border: '1px solid rgba(34,197,94,0.2)' }}>
+                          PIX
+                        </span>
+                      </>
+                    ) : (
+                      <>
+                        <span style={{ color: '#6d6d74', lineHeight: 1.45 }}>
+                          recebe <strong style={{ color: '#a855f7' }}>{formatMoney(cashback)}</strong> de cashback
+                        </span>
+                        <span style={{ background: 'rgba(168,85,247,0.1)', color: '#a855f7', padding: '1px 7px', borderRadius: 99, fontSize: 10, fontWeight: 800, border: '1px solid rgba(168,85,247,0.2)' }}>
+                          CASHBACK
+                        </span>
+                      </>
+                    )}
                   </div>
                 </div>
 
@@ -448,23 +525,27 @@ export default function CartDrawer({ open, onClose }: Props) {
                   </div>
                   <div>
                     <p style={{ fontSize: 12.5, fontWeight: 800, color: '#a855f7', lineHeight: 1.2 }}>
-                      Você vai ganhar R$ {cashback.toFixed(2).replace('.', ',')} de cashback!
+                      {checkoutBenefitMode === 'cashback'
+                        ? `Você vai ganhar R$ ${cashback.toFixed(2).replace('.', ',')} de cashback!`
+                        : `No cartão o benefício vira cashback de R$ ${cashback.toFixed(2).replace('.', ',')}.`}
                     </p>
                     <p style={{ fontSize: 11, color: '#664d00', marginTop: 2 }}>
-                      5% do valor volta pra sua carteira SUH
+                      {checkoutBenefitMode === 'cashback'
+                        ? '5% do valor volta pra sua carteira SUH'
+                        : 'Se escolher desconto PIX, o cashback não acumula.'}
                     </p>
                   </div>
                 </div>
 
                 {/* CTA */}
                 <div className="cart-checkout-cta" style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                  <Link to="/checkout" onClick={onClose}
-                  className="no-underline cart-checkout-button"
+                  <button type="button" onClick={goToCheckout}
+                  className="cart-checkout-button"
                   style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, padding: '15px', borderRadius: 10, background: 'linear-gradient(135deg, #a855f7, #FF2DA0)', color: '#fff', fontWeight: 900, fontSize: 14, letterSpacing: '0.06em', transition: 'opacity 0.2s' }}
                   onMouseEnter={e => (e.currentTarget.style.opacity = '0.9')}
                   onMouseLeave={e => (e.currentTarget.style.opacity = '1')}>
-                    <Lock size={15} /> IR PARA O CHECKOUT
-                  </Link>
+                    <Lock size={15} /> {getStoredToken() ? 'IR PARA O CHECKOUT' : 'ENTRAR PARA COMPRAR'}
+                  </button>
 
                   <button onClick={onClose}
                   className="cart-continue-button"
