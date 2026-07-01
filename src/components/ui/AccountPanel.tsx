@@ -84,6 +84,10 @@ export default function AccountPanel({ compact = false, onAuthSuccess, redirectT
   useEffect(() => {
     let active = true;
     const token = getStoredToken();
+    const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ''));
+    const socialToken = hashParams.get('authToken');
+    const socialRedirect = hashParams.get('authRedirect') || redirectTo;
+    const socialError = hashParams.get('authError');
 
     api.auth.providers()
       .then((data) => {
@@ -93,30 +97,62 @@ export default function AccountPanel({ compact = false, onAuthSuccess, redirectT
         if (active) setProviders([]);
       });
 
-    if (!token) {
-      setCheckingSession(false);
+    if (socialError) {
+      showToast(socialError, 'error');
+      window.history.replaceState({}, document.title, window.location.pathname + window.location.search);
+    }
+
+    const finishSessionCheck = (sessionToken: string | null) => {
+      if (!sessionToken) {
+        setCheckingSession(false);
+        return;
+      }
+
+      api.auth.me()
+        .then((user) => {
+          if (!active) return;
+          storeSession(sessionToken, user);
+          setCurrentUser(user);
+          setEmail(user.email);
+          if (socialToken) {
+            showToast('Login com Google realizado com sucesso!');
+            onAuthSuccess?.();
+            if (socialRedirect) {
+              navigate(socialRedirect);
+              return;
+            }
+          }
+        })
+        .catch(() => {
+          clearSession();
+          if (active && socialToken) {
+            showToast('Nao foi possivel concluir o login com Google.', 'error');
+          }
+        })
+        .finally(() => {
+          if (active) {
+            setCheckingSession(false);
+            if (socialToken || socialError) {
+              window.history.replaceState({}, document.title, window.location.pathname + window.location.search);
+            }
+          }
+        });
+    };
+
+    if (socialToken) {
+      localStorage.setItem('suh_token', socialToken);
+      finishSessionCheck(socialToken);
       return () => {
         active = false;
       };
     }
 
-    api.auth.me()
-      .then((user) => {
-        if (!active) return;
-        setCurrentUser(user);
-        setEmail(user.email);
-      })
-      .catch(() => {
-        clearSession();
-      })
-      .finally(() => {
-        if (active) setCheckingSession(false);
-      });
+    finishSessionCheck(token);
 
     return () => {
       active = false;
     };
-  }, []);
+  }, [navigate, onAuthSuccess, redirectTo, showToast]);
 
   useEffect(() => {
     if (!currentUser) {
@@ -238,7 +274,13 @@ export default function AccountPanel({ compact = false, onAuthSuccess, redirectT
       return;
     }
 
-    showToast('Integração social habilitada. Finalizando redirecionamento na próxima etapa.');
+    if (provider === 'google') {
+      const redirect = redirectTo || `${window.location.pathname}${window.location.search}`;
+      window.location.href = `/api/auth/google/start?redirect=${encodeURIComponent(redirect)}`;
+      return;
+    }
+
+    showToast('Login com iCloud ainda nao foi ativado.', 'error');
   };
 
   const containerStyle: CSSProperties = compact
@@ -306,12 +348,8 @@ export default function AccountPanel({ compact = false, onAuthSuccess, redirectT
                 <Mail size={16} />
                 Entrar com Google
               </button>
-              <button type="button" onClick={() => handleSocialClick('apple')} style={socialButtonStyle}>
-                <span style={{ fontSize: 12, fontWeight: 900, letterSpacing: '0.08em' }}>APPLE</span>
-                Entrar com iCloud
-              </button>
               <p style={{ fontSize: 11, color: '#7d7d84', lineHeight: 1.5, textAlign: 'left' }}>
-                Login social já está preparado na interface. A ativação final depende das chaves oficiais do Google e da Apple.
+                Entre com Google para comprar, acompanhar pedidos e finalizar tudo com mais rapidez.
               </p>
             </div>
 

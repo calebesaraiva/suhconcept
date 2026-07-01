@@ -30,6 +30,12 @@ services:
       FRONTEND_URL: ${FRONTEND_URL:-https://suhconcept.com,https://www.suhconcept.com}
       PUBLIC_SITE_URL: ${PUBLIC_SITE_URL:-https://suhconcept.com}
       PAGBANK_TOKEN: ${PAGBANK_TOKEN:-}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+      MELHOR_ENVIO_ACCESS_TOKEN: ${MELHOR_ENVIO_ACCESS_TOKEN:-}
+      MELHOR_ENVIO_CEP_ORIGEM: ${MELHOR_ENVIO_CEP_ORIGEM:-65910215}
+      MELHOR_ENVIO_APP_NAME: ${MELHOR_ENVIO_APP_NAME:-SUH CONCEPT}
+      MELHOR_ENVIO_APP_EMAIL: ${MELHOR_ENVIO_APP_EMAIL:-suporte@suhconcept.com}
     command: sh -c "npx prisma db push && node dist/index.js"
     ports:
       - "127.0.0.1:3201:3333"

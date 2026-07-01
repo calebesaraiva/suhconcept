@@ -16,6 +16,40 @@ function sanitizeUser(user: { id: string; name: string; email: string; role: str
   return { id: user.id, name: user.name, email: user.email, role: normalizeRole(user.role) };
 }
 
+function getPublicSiteUrl() {
+  return String(process.env.PUBLIC_SITE_URL || 'https://suhconcept.com').trim().replace(/\/+$/, '');
+}
+
+function getGoogleRedirectUri() {
+  return `${getPublicSiteUrl()}/api/auth/google/callback`;
+}
+
+function encodeState(payload: Record<string, string>) {
+  return Buffer.from(JSON.stringify(payload), 'utf8').toString('base64url');
+}
+
+function decodeState(state?: string | null) {
+  if (!state) return {};
+  try {
+    const parsed = JSON.parse(Buffer.from(String(state), 'base64url').toString('utf8'));
+    return typeof parsed === 'object' && parsed ? parsed as Record<string, string> : {};
+  } catch {
+    return {};
+  }
+}
+
+function buildAccountRedirect(params: { token?: string; redirect?: string; error?: string }) {
+  const siteUrl = getPublicSiteUrl();
+  const hash = new URLSearchParams();
+
+  if (params.token) hash.set('authToken', params.token);
+  if (params.redirect) hash.set('authRedirect', params.redirect);
+  if (params.error) hash.set('authError', params.error);
+
+  const suffix = hash.toString();
+  return `${siteUrl}/conta${suffix ? `#${suffix}` : ''}`;
+}
+
 // POST /api/auth/register
 router.post('/register', async (req, res) => {
   try {
@@ -122,6 +156,145 @@ router.get('/providers', (_req, res) => {
       label: 'iCloud / Apple',
     },
   ]);
+});
+
+router.get('/google/start', (req, res) => {
+  const clientId = String(process.env.GOOGLE_CLIENT_ID || '').trim();
+  const clientSecret = String(process.env.GOOGLE_CLIENT_SECRET || '').trim();
+
+  if (!clientId || !clientSecret) {
+    return res.redirect(buildAccountRedirect({ error: 'Login com Google ainda não foi configurado.' }));
+  }
+
+  const rawRedirect = String(req.query.redirect || '/').trim();
+  const redirect = rawRedirect.startsWith('/') ? rawRedirect : '/';
+  const state = encodeState({ redirect });
+
+  const url = new URL('https://accounts.google.com/o/oauth2/v2/auth');
+  url.searchParams.set('client_id', clientId);
+  url.searchParams.set('redirect_uri', getGoogleRedirectUri());
+  url.searchParams.set('response_type', 'code');
+  url.searchParams.set('scope', 'openid email profile');
+  url.searchParams.set('access_type', 'online');
+  url.searchParams.set('include_granted_scopes', 'true');
+  url.searchParams.set('prompt', 'select_account');
+  url.searchParams.set('state', state);
+
+  res.redirect(url.toString());
+});
+
+router.get('/google/callback', async (req, res) => {
+  const clientId = String(process.env.GOOGLE_CLIENT_ID || '').trim();
+  const clientSecret = String(process.env.GOOGLE_CLIENT_SECRET || '').trim();
+  const state = decodeState(typeof req.query.state === 'string' ? req.query.state : null);
+  const redirect = String(state.redirect || '/').trim();
+
+  if (!clientId || !clientSecret) {
+    return res.redirect(buildAccountRedirect({ redirect, error: 'Login com Google ainda não foi configurado.' }));
+  }
+
+  if (typeof req.query.error === 'string' && req.query.error) {
+    return res.redirect(buildAccountRedirect({ redirect, error: 'Login com Google cancelado.' }));
+  }
+
+  const code = typeof req.query.code === 'string' ? req.query.code : '';
+  if (!code) {
+    return res.redirect(buildAccountRedirect({ redirect, error: 'Nao foi possivel concluir o login com Google.' }));
+  }
+
+  try {
+    const tokenResponse = await fetch('https://oauth2.googleapis.com/token', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: new URLSearchParams({
+        client_id: clientId,
+        client_secret: clientSecret,
+        code,
+        grant_type: 'authorization_code',
+        redirect_uri: getGoogleRedirectUri(),
+      }).toString(),
+    });
+
+    if (!tokenResponse.ok) {
+      throw new Error('Falha ao trocar o codigo do Google por token.');
+    }
+
+    const tokenData = await tokenResponse.json() as { access_token?: string };
+    if (!tokenData.access_token) {
+      throw new Error('Token de acesso do Google nao retornado.');
+    }
+
+    const userInfoResponse = await fetch('https://openidconnect.googleapis.com/v1/userinfo', {
+      headers: {
+        Authorization: `Bearer ${tokenData.access_token}`,
+      },
+    });
+
+    if (!userInfoResponse.ok) {
+      throw new Error('Falha ao consultar o perfil do Google.');
+    }
+
+    const googleUser = await userInfoResponse.json() as {
+      email?: string;
+      email_verified?: boolean;
+      name?: string;
+      given_name?: string;
+      picture?: string;
+      sub?: string;
+    };
+
+    const email = String(googleUser.email || '').trim().toLowerCase();
+    const name = String(googleUser.name || googleUser.given_name || 'Cliente SUH').trim();
+
+    if (!email || !googleUser.email_verified) {
+      throw new Error('A conta do Google precisa ter e-mail verificado.');
+    }
+
+    const fallbackPassword = await bcrypt.hash(`google:${googleUser.sub || email}:${SECRET}`, 10);
+    let user = await prisma.user.findUnique({ where: { email } });
+
+    if (!user) {
+      user = await prisma.user.create({
+        data: {
+          name,
+          email,
+          password: fallbackPassword,
+          role: 'customer',
+          active: true,
+        },
+      });
+    } else if (!user.active && isStaffRole(user.role)) {
+      return res.redirect(buildAccountRedirect({ redirect, error: 'Seu acesso esta desativado no momento.' }));
+    } else if (user.name !== name) {
+      user = await prisma.user.update({
+        where: { id: user.id },
+        data: { name },
+      });
+    }
+
+    await prisma.customer.upsert({
+      where: { email },
+      update: {
+        name,
+        avatar: googleUser.picture || undefined,
+        status: 'ativo',
+      },
+      create: {
+        name,
+        email,
+        avatar: googleUser.picture || undefined,
+        status: 'ativo',
+      },
+    });
+
+    const token = signUser(user);
+    return res.redirect(buildAccountRedirect({ token, redirect }));
+  } catch (error) {
+    console.error('Google OAuth callback error:', error);
+    return res.redirect(buildAccountRedirect({ redirect, error: 'Nao foi possivel concluir o login com Google.' }));
+  }
 });
 
 router.get('/orders', requireAuth, async (req: AuthRequest, res) => {
