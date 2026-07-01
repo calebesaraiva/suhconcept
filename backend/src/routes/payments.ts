@@ -3,6 +3,7 @@ import { prisma } from '../lib/prisma';
 import {
   getPagBankCheckoutStatus,
   getPagBankConfig,
+  getPagBankOrderStatus,
   mapPagBankStatus,
   validatePagBankWebhookSignature,
 } from '../lib/pagbank';
@@ -17,6 +18,64 @@ function getOrderPaymentMeta(order: { address: unknown }) {
 
 function getStringValue(value: unknown) {
   return typeof value === 'string' ? value : '';
+}
+
+async function resolvePagBankPaymentSnapshot(
+  config: NonNullable<Awaited<ReturnType<typeof getPagBankConfig>>>,
+  payment: Record<string, unknown>,
+) {
+  const storedChargeId = getStringValue(payment.chargeId);
+  const providerOrderId = getStringValue(payment.providerOrderId) || (storedChargeId.startsWith('ORDE_') ? storedChargeId : '');
+  const checkoutId = getStringValue(payment.checkoutId);
+
+  if (providerOrderId) {
+    const providerOrder = await getPagBankOrderStatus(config, providerOrderId);
+    return {
+      providerOrderId: providerOrder.providerOrderId,
+      checkoutId,
+      redirectUrl: getStringValue(payment.redirectUrl),
+      status: providerOrder.chargeStatus || providerOrder.status,
+      chargeId: providerOrder.chargeId || getStringValue(payment.chargeId),
+      paidAt: providerOrder.paidAt || getStringValue(payment.paidAt),
+      source: 'order' as const,
+    };
+  }
+
+  if (!checkoutId) {
+    return {
+      providerOrderId: '',
+      checkoutId: '',
+      redirectUrl: getStringValue(payment.redirectUrl),
+      status: getStringValue(payment.status),
+      chargeId: getStringValue(payment.chargeId),
+      paidAt: getStringValue(payment.paidAt),
+      source: 'stored' as const,
+    };
+  }
+
+  const providerCheckout = await getPagBankCheckoutStatus(config, checkoutId);
+  if (providerCheckout.providerOrderId) {
+    const providerOrder = await getPagBankOrderStatus(config, providerCheckout.providerOrderId);
+    return {
+      providerOrderId: providerOrder.providerOrderId,
+      checkoutId: providerCheckout.checkoutId,
+      redirectUrl: providerCheckout.redirectUrl || getStringValue(payment.redirectUrl),
+      status: providerOrder.chargeStatus || providerOrder.status,
+      chargeId: providerOrder.chargeId || providerCheckout.chargeId || getStringValue(payment.chargeId),
+      paidAt: providerOrder.paidAt || providerCheckout.paidAt || getStringValue(payment.paidAt),
+      source: 'checkout+order' as const,
+    };
+  }
+
+  return {
+    providerOrderId: '',
+    checkoutId: providerCheckout.checkoutId,
+    redirectUrl: providerCheckout.redirectUrl || getStringValue(payment.redirectUrl),
+    status: providerCheckout.chargeStatus || providerCheckout.status,
+    chargeId: providerCheckout.chargeId || getStringValue(payment.chargeId),
+    paidAt: providerCheckout.paidAt || getStringValue(payment.paidAt),
+    source: 'checkout' as const,
+  };
 }
 
 router.post('/pagbank/webhook', async (req, res) => {
@@ -42,10 +101,20 @@ router.post('/pagbank/webhook', async (req, res) => {
     if (!order) return res.status(404).json({ error: 'Pedido não encontrado' });
 
     const { address, payment } = getOrderPaymentMeta(order);
+    const providerOrderId =
+      externalId.startsWith('ORDE_')
+        ? externalId
+        : getStringValue(payment.providerOrderId) || (getStringValue(payment.chargeId).startsWith('ORDE_') ? getStringValue(payment.chargeId) : '');
+    const providerStatus = providerOrderId
+      ? await getPagBankOrderStatus(config, providerOrderId)
+      : null;
+    const resolvedStatus = providerStatus?.chargeStatus || providerStatus?.status || externalStatus || getStringValue(payment.status);
     const paymentMeta = {
       ...payment,
-      status: externalStatus || getStringValue(payment.status),
-      chargeId: externalId || getStringValue(payment.chargeId),
+      providerOrderId,
+      status: resolvedStatus,
+      chargeId: providerStatus?.chargeId || (externalId.startsWith('CHAR_') ? externalId : getStringValue(payment.chargeId)),
+      paidAt: providerStatus?.paidAt || getStringValue(payment.paidAt),
       lastWebhookAt: new Date().toISOString(),
       webhookScope: String(req.query.scope || 'payment'),
       lastWebhookEventId: externalId || getStringValue(payment.chargeId),
@@ -54,7 +123,7 @@ router.post('/pagbank/webhook', async (req, res) => {
     await prisma.order.update({
       where: { id: orderId },
       data: {
-        status: mapPagBankStatus(externalStatus),
+        status: mapPagBankStatus(resolvedStatus),
         address: {
           ...address,
           payment: paymentMeta,
@@ -78,24 +147,24 @@ router.get('/pagbank/orders/:orderId/status', async (req, res) => {
     if (!order) return res.status(404).json({ error: 'Pedido não encontrado' });
 
     const { address, payment } = getOrderPaymentMeta(order);
-    const checkoutId = typeof payment.checkoutId === 'string' ? payment.checkoutId : '';
     const config = await getPagBankConfig(prisma);
 
-    if (!checkoutId || !config) {
+    if (!config) {
       return res.json({
         order,
         payment: payment || null,
       });
     }
 
-    const providerStatus = await getPagBankCheckoutStatus(config, checkoutId);
-    const internalStatus = mapPagBankStatus(providerStatus.chargeStatus || providerStatus.status);
+    const providerStatus = await resolvePagBankPaymentSnapshot(config, payment);
+    const internalStatus = mapPagBankStatus(providerStatus.status);
 
     const nextPaymentMeta = {
       ...payment,
-      checkoutId: providerStatus.checkoutId,
+      providerOrderId: providerStatus.providerOrderId || getStringValue(payment.providerOrderId),
+      checkoutId: providerStatus.checkoutId || getStringValue(payment.checkoutId),
       redirectUrl: providerStatus.redirectUrl || getStringValue(payment.redirectUrl),
-      status: providerStatus.chargeStatus || providerStatus.status,
+      status: providerStatus.status,
       chargeId: providerStatus.chargeId || getStringValue(payment.chargeId),
       syncedAt: new Date().toISOString(),
       paidAt: providerStatus.paidAt || getStringValue(payment.paidAt),

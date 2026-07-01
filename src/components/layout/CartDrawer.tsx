@@ -267,6 +267,33 @@ export default function CartDrawer({ open, onClose }: Props) {
               )}
             </div>
 
+            {cart.length > 0 && (
+              <div className="cart-drawer-quickbar" style={{ padding: '12px 22px', borderTop: '1px solid rgba(255,255,255,0.07)', borderBottom: '1px solid rgba(255,255,255,0.05)', background: 'rgba(11,11,11,0.94)', backdropFilter: 'blur(16px)', display: 'flex', alignItems: 'center', gap: 12, flexShrink: 0 }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <p style={{ fontSize: 10.5, color: '#7e7e87', fontWeight: 800, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 3 }}>
+                    Total agora
+                  </p>
+                  <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
+                    <span style={{ fontSize: 24, lineHeight: 1, color: '#fff', fontWeight: 900 }}>
+                      {formatMoney(totalWithShipping)}
+                    </span>
+                    <span style={{ fontSize: 11.5, color: '#22C55E', fontWeight: 700 }}>
+                      ou {formatMoney(pixTotal)} no PIX
+                    </span>
+                  </div>
+                </div>
+
+                <Link
+                  to="/checkout"
+                  onClick={onClose}
+                  className="no-underline cart-quick-checkout-button"
+                  style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8, minWidth: 172, padding: '14px 18px', borderRadius: 14, background: 'linear-gradient(135deg, #a855f7, #FF2DA0)', color: '#fff', fontWeight: 900, fontSize: 13, letterSpacing: '0.06em', boxShadow: '0 16px 28px rgba(168,85,247,0.24)' }}
+                >
+                  <Lock size={15} /> IR AGORA
+                </Link>
+              </div>
+            )}
+
             {/* ── Footer / Summary ── */}
             {cart.length > 0 && (
               <div className="cart-drawer-footer" style={{ borderTop: '1px solid rgba(255,255,255,0.07)', background: '#0b0b0b', padding: '18px 22px 22px', display: 'flex', flexDirection: 'column', gap: 14, flexShrink: 0 }}>

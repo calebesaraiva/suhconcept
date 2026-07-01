@@ -1380,7 +1380,8 @@ body {
 }
 
 .cart-drawer-header,
-.cart-drawer-progress {
+.cart-drawer-progress,
+.cart-drawer-quickbar {
   position: sticky;
   z-index: 2;
 }
@@ -1391,6 +1392,11 @@ body {
 
 .cart-drawer-progress {
   top: 77px;
+}
+
+.cart-drawer-quickbar {
+  top: 133px;
+  box-shadow: 0 14px 30px rgba(0,0,0,0.18);
 }
 
 .cart-item-card,
@@ -1432,6 +1438,7 @@ body {
 
   .cart-drawer-header,
   .cart-drawer-progress,
+  .cart-drawer-quickbar,
   .cart-drawer-content,
   .cart-drawer-footer {
     padding-left: 16px !important;
@@ -1446,6 +1453,20 @@ body {
   .cart-drawer-progress {
     padding-top: 10px !important;
     padding-bottom: 10px !important;
+  }
+
+  .cart-drawer-quickbar {
+    padding-top: 12px !important;
+    padding-bottom: 12px !important;
+    gap: 10px !important;
+    flex-direction: column !important;
+    align-items: stretch !important;
+    top: 125px;
+  }
+
+  .cart-quick-checkout-button {
+    width: 100%;
+    min-width: 0 !important;
   }
 
   .cart-drawer-content {

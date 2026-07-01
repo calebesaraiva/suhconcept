@@ -24,10 +24,21 @@ export interface PagBankCheckoutResult {
 export interface PagBankCheckoutStatus {
   checkoutId: string;
   status: string;
+  providerOrderId?: string;
   chargeId?: string;
   chargeStatus?: string;
   paidAt?: string;
   redirectUrl?: string;
+  raw: unknown;
+}
+
+export interface PagBankOrderStatus {
+  providerOrderId: string;
+  referenceId?: string;
+  status: string;
+  chargeId?: string;
+  chargeStatus?: string;
+  paidAt?: string;
   raw: unknown;
 }
 
@@ -118,6 +129,17 @@ function extractChargeStatus(raw: unknown) {
     chargeStatus: getString(firstCharge?.status || data.status),
     paidAt,
   };
+}
+
+function extractProviderOrderId(raw: unknown) {
+  if (!raw || typeof raw !== 'object') return '';
+  const data = raw as JsonObject;
+  const directOrderId = getString(data.order_id);
+  if (directOrderId) return directOrderId;
+
+  const orders = Array.isArray(data.orders) ? data.orders : [];
+  const firstOrder = orders.find((item) => item && typeof item === 'object') as JsonObject | undefined;
+  return getString(firstOrder?.id);
 }
 
 async function pagBankRequest<T>(config: PagBankConfig, path: string, init?: RequestInit): Promise<T> {
@@ -292,16 +314,35 @@ export async function getPagBankCheckoutStatus(config: PagBankConfig, checkoutId
   const status = getString(response.status);
   const redirectUrl = extractCheckoutUrl(response);
   const charge = extractChargeStatus(response);
+  const providerOrderId = extractProviderOrderId(response);
 
   return {
     checkoutId,
     status,
+    providerOrderId: providerOrderId || undefined,
     redirectUrl: redirectUrl || undefined,
     chargeId: charge.chargeId || undefined,
     chargeStatus: charge.chargeStatus || undefined,
     paidAt: charge.paidAt || undefined,
     raw: response,
   } satisfies PagBankCheckoutStatus;
+}
+
+export async function getPagBankOrderStatus(config: PagBankConfig, providerOrderId: string) {
+  const response = await pagBankRequest<JsonObject>(config, `/orders/${providerOrderId}`, {
+    method: 'GET',
+  });
+  const charge = extractChargeStatus(response);
+
+  return {
+    providerOrderId,
+    referenceId: getString(response.reference_id) || undefined,
+    status: charge.chargeStatus || getString(response.status),
+    chargeId: charge.chargeId || undefined,
+    chargeStatus: charge.chargeStatus || undefined,
+    paidAt: charge.paidAt || undefined,
+    raw: response,
+  } satisfies PagBankOrderStatus;
 }
 
 export function validatePagBankWebhookSignature(rawBody: string, signature: string | undefined, token: string) {

@@ -2,6 +2,7 @@ import bcrypt from 'bcryptjs';
 import { Router } from 'express';
 import { AuthRequest, requireAuth, requireAdmin, requireRole } from '../middleware/auth';
 import { prisma } from '../lib/prisma';
+import { getPagBankCheckoutStatus, getPagBankConfig, getPagBankOrderStatus, mapPagBankStatus } from '../lib/pagbank';
 import { getStoreSettingsMap } from '../lib/storeSettings';
 import { sendOrderOutForDeliveryEmail } from '../lib/mailer';
 import { quoteShipping } from '../lib/shipping';
@@ -21,6 +22,7 @@ const normalizePaymentMethod = (value: unknown) =>
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '');
 const singleQueryValue = (value: unknown) => Array.isArray(value) ? value[0] : value;
+const getStringValue = (value: unknown) => typeof value === 'string' ? value : '';
 const sanitizeDashboardUser = (user: { id: string; name: string; email: string; role: string; active: boolean; createdAt: Date; updatedAt: Date }) => ({
   id: user.id,
   name: user.name,
@@ -39,6 +41,87 @@ const resolvePaymentMethodColor = (method: string) => {
 
   return '#555';
 };
+
+async function syncPagBankOrderStatusIfNeeded(order: {
+  id: string;
+  status: string;
+  address: unknown;
+}) {
+  if (order.status !== 'aguardando_pagamento') {
+    return order;
+  }
+
+  const address = order.address && typeof order.address === 'object'
+    ? order.address as Record<string, unknown>
+    : {};
+  const payment = address.payment && typeof address.payment === 'object'
+    ? address.payment as Record<string, unknown>
+    : {};
+
+  if (getStringValue(payment.provider) !== 'pagbank') {
+    return order;
+  }
+
+  const config = await getPagBankConfig(prisma);
+  if (!config) {
+    return order;
+  }
+
+  const storedChargeId = getStringValue(payment.chargeId);
+  const providerOrderId = getStringValue(payment.providerOrderId) || (storedChargeId.startsWith('ORDE_') ? storedChargeId : '');
+  const checkoutId = getStringValue(payment.checkoutId);
+
+  let resolvedStatus = getStringValue(payment.status);
+  let resolvedChargeId = storedChargeId;
+  let paidAt = getStringValue(payment.paidAt);
+  let resolvedProviderOrderId = providerOrderId;
+
+  if (providerOrderId) {
+    const providerOrder = await getPagBankOrderStatus(config, providerOrderId);
+    resolvedStatus = providerOrder.chargeStatus || providerOrder.status;
+    resolvedChargeId = providerOrder.chargeId || resolvedChargeId;
+    paidAt = providerOrder.paidAt || paidAt;
+  } else if (checkoutId) {
+    const checkout = await getPagBankCheckoutStatus(config, checkoutId);
+    if (checkout.providerOrderId) {
+      const providerOrder = await getPagBankOrderStatus(config, checkout.providerOrderId);
+      resolvedProviderOrderId = providerOrder.providerOrderId;
+      resolvedStatus = providerOrder.chargeStatus || providerOrder.status;
+      resolvedChargeId = providerOrder.chargeId || checkout.chargeId || resolvedChargeId;
+      paidAt = providerOrder.paidAt || checkout.paidAt || paidAt;
+    } else {
+      resolvedStatus = checkout.chargeStatus || checkout.status;
+      resolvedChargeId = checkout.chargeId || resolvedChargeId;
+      paidAt = checkout.paidAt || paidAt;
+    }
+  } else {
+    return order;
+  }
+
+  const nextInternalStatus = mapPagBankStatus(resolvedStatus);
+  if (nextInternalStatus === order.status && resolvedStatus === getStringValue(payment.status) && resolvedChargeId === storedChargeId && paidAt === getStringValue(payment.paidAt) && resolvedProviderOrderId === getStringValue(payment.providerOrderId)) {
+    return order;
+  }
+
+  return prisma.order.update({
+    where: { id: order.id },
+    data: {
+      status: nextInternalStatus,
+      address: {
+        ...address,
+        payment: {
+          ...payment,
+          providerOrderId: resolvedProviderOrderId || undefined,
+          status: resolvedStatus,
+          chargeId: resolvedChargeId || undefined,
+          paidAt: paidAt || undefined,
+          syncedAt: new Date().toISOString(),
+        },
+      },
+    },
+    include: { items: true },
+  });
+}
 
 // Todas as rotas do painel exigem autenticação; permissões específicas são aplicadas por rota.
 router.use(requireAuth);
@@ -143,7 +226,15 @@ router.get('/orders', requireRole('master', 'manager', 'seller'), async (req, re
       prisma.order.findMany({ where, orderBy: { createdAt: 'desc' }, take, skip, include: { items: true } }),
       prisma.order.count({ where }),
     ]);
-    res.json({ orders, total });
+    const syncedOrders = await Promise.all(orders.map(async (order) => {
+      try {
+        return await syncPagBankOrderStatusIfNeeded(order);
+      } catch (error) {
+        console.error(`Erro ao sincronizar pedido ${order.id} com PagBank:`, error);
+        return order;
+      }
+    }));
+    res.json({ orders: syncedOrders, total });
   } catch {
     res.status(500).json({ error: 'Erro interno' });
   }
