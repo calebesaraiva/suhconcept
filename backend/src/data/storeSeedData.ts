@@ -50,7 +50,7 @@ export const adminUsers = [
   {
     email: 'admin@suhconcept.com.br',
     password: 'suh@2026',
-    name: 'Admin',
+    name: 'Alisson',
     role: 'master',
   },
   {

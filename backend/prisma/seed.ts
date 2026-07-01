@@ -7,7 +7,7 @@ async function main() {
   console.log('🌱 Seeding database...');
   await ensureStoreBootstrap(prisma);
   console.log('✅ Seed complete!');
-  console.log('👤 Admin: admin@suhconcept.com.br / suh@2026');
+  console.log('👤 Alisson: admin@suhconcept.com.br / suh@2026');
   console.log('👤 Nexus: nexus@suhconcept.com.br / nexus@2026');
 }
 
