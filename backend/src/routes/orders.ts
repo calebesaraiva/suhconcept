@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { prisma } from '../lib/prisma';
 import { createPagBankCheckout, getPagBankConfig } from '../lib/pagbank';
-import { createOrderStatusHistory } from '../lib/orderStatus';
+import { backfillMissingOrderHistory, createOrderStatusHistory } from '../lib/orderStatus';
 import { quoteShipping } from '../lib/shipping';
 import { getProductPricing, getStorePricingSettings } from '../lib/storePricing';
 import { getStoreSettingsMap, parseBool, parseNumber } from '../lib/storeSettings';
@@ -505,6 +505,7 @@ router.get('/mine', requireAuth, async (req: AuthRequest, res) => {
       orderBy: { createdAt: 'desc' },
     });
 
+    await backfillMissingOrderHistory(prisma, orders);
     res.json(orders);
   } catch {
     res.status(500).json({ error: 'Erro ao buscar pedidos' });
@@ -518,6 +519,7 @@ router.get('/:id', async (req, res) => {
       include: { items: true, customer: true, history: { orderBy: { createdAt: 'asc' } } },
     });
     if (!order) return res.status(404).json({ error: 'Pedido não encontrado' });
+    await backfillMissingOrderHistory(prisma, [order]);
     res.json(order);
   } catch {
     res.status(500).json({ error: 'Erro interno' });

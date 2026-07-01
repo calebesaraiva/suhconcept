@@ -2,6 +2,7 @@ import { Router } from 'express';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { prisma } from '../lib/prisma';
+import { backfillMissingOrderHistory } from '../lib/orderStatus';
 import { isStaffRole, normalizeRole } from '../lib/roles';
 import { requireAuth, type AuthRequest } from '../middleware/auth';
 
@@ -318,6 +319,7 @@ router.get('/orders', requireAuth, async (req: AuthRequest, res) => {
       orderBy: { createdAt: 'desc' },
     });
 
+    await backfillMissingOrderHistory(prisma, orders);
     res.json(orders);
   } catch {
     res.status(500).json({ error: 'Erro ao carregar seus pedidos' });

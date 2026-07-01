@@ -110,3 +110,60 @@ export async function appendOrderStatusHistoryIfChanged(
     source: input.source,
   });
 }
+
+type OrderWithHistoryLike = {
+  id: string;
+  status: string;
+  deliveryMethod?: string | null;
+  createdAt?: Date | string | null;
+  history?: Array<{
+    id?: string;
+    status?: string;
+    label?: string;
+    description?: string;
+    actorName?: string | null;
+    actorRole?: string | null;
+    source?: string;
+    createdAt?: Date | string;
+  }>;
+};
+
+export async function backfillMissingOrderHistory<T extends OrderWithHistoryLike>(
+  prisma: DbClient,
+  orders: T[],
+) {
+  const missingOrders = orders.filter((order) => !Array.isArray(order.history) || order.history.length === 0);
+
+  if (!missingOrders.length) {
+    return orders;
+  }
+
+  await prisma.orderStatusHistory.createMany({
+    data: missingOrders.map((order) => {
+      const meta = getOrderStatusMeta(order.status, order.deliveryMethod);
+      return {
+        orderId: order.id,
+        status: order.status,
+        label: meta.label,
+        description: meta.description,
+        source: 'backfill',
+        createdAt: order.createdAt ? new Date(order.createdAt) : new Date(),
+      };
+    }),
+  });
+
+  for (const order of missingOrders) {
+    const meta = getOrderStatusMeta(order.status, order.deliveryMethod);
+    order.history = [
+      {
+        status: order.status,
+        label: meta.label,
+        description: meta.description,
+        source: 'backfill',
+        createdAt: order.createdAt ? new Date(order.createdAt) : new Date(),
+      },
+    ];
+  }
+
+  return orders;
+}

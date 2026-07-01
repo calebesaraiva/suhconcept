@@ -5,7 +5,7 @@ import { prisma } from '../lib/prisma';
 import { getPagBankCheckoutStatus, getPagBankConfig, getPagBankOrderStatus, mapPagBankStatus } from '../lib/pagbank';
 import { getStoreSettingsMap } from '../lib/storeSettings';
 import { sendOrderStatusEmail } from '../lib/mailer';
-import { appendOrderStatusHistoryIfChanged } from '../lib/orderStatus';
+import { appendOrderStatusHistoryIfChanged, backfillMissingOrderHistory } from '../lib/orderStatus';
 import { quoteShipping } from '../lib/shipping';
 import { canViewCostData, isSellerRole, normalizeRole, sanitizeStaffRole } from '../lib/roles';
 
@@ -246,6 +246,7 @@ router.get('/orders', requireRole('master', 'manager', 'seller'), async (req, re
         return order;
       }
     }));
+    await backfillMissingOrderHistory(prisma, syncedOrders);
     res.json({ orders: syncedOrders, total });
   } catch {
     res.status(500).json({ error: 'Erro interno' });
